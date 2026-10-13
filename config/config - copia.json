@@ -1,0 +1,120 @@
+{
+    "Duration_hours": 0.2,
+    "Data_time_step_seconds": 2,
+    "init_epoch": "2000-01-01T11:59:28",
+
+    "navigation_error_flag": true,
+    "graphic_display_flag": true,
+    "image_generation_flag": false,
+    "ignore_fov_for_measurements_flag": true,
+    "star_csv_flag": false,
+
+    "camera_config": {
+
+        "Vmag_lim": 10.0,
+        "fov_deg": 27,
+        "resolution_x": 1024,
+        "resolution_y": 1024,
+
+        "mag0": 8.0,
+        "flux0": 20000.0,
+
+        "fwhm_deg": 0.0659 ,
+        "background_level": 500,
+        "sigma_read_noise": 100.0,
+
+        "upper_percentile": 99.9,
+        "lower_percentage": 0.0,
+
+        "los_sigma_arcsec": 42.43
+
+    },
+
+    "photometry_config": {
+        "phi_sun": 455.0,
+        "glare_angle_deg": 15.0,
+        "Vref_phong": -10.0,
+        "Fref_phong": 0.000001
+    },
+
+    "objectives": {
+        "deb1": {
+            "SMA": 8800.0,
+            "ECC": 0.2,
+            "INC": 90,
+            "RAAN": 10,
+            "AOP": 0.0,
+            "TA": 357.5,
+	    "w_deg_s": 30,
+            "w_dir": [1, 0, 0]
+        }
+
+    },
+
+    "observers": {
+        "cam1": {
+            "SMA": 7000,
+            "ECC": 0.001,
+            "INC": 90,
+            "RAAN": 0,
+            "AOP": 0.0,
+            "TA": 0.0,
+            "obs_dir": [0, 1, 0],
+            "position_sigma_km": [0.35, 0.35, 0.35],
+	    "velocity_sigma_km_s": [0.00035, 0.00035, 0.00035]
+        },
+	"cam2": {
+            "SMA": 7500,
+            "ECC": 0.001,
+            "INC": 90,
+            "RAAN": 20,
+            "AOP": 0.0,
+            "TA": 0.0,
+            "obs_dir": [0, -1, 0],
+            "position_sigma_km": [0.35, 0.35, 0.35],
+	    "velocity_sigma_km_s": [0.00035, 0.00035, 0.00035]
+        },
+	"cam3": {
+            "SMA": 7000,
+            "ECC": 0.001,
+            "INC": 90,
+            "RAAN": 350,
+            "AOP": 0.0,
+            "TA": 0.0,
+            "obs_dir": [0, 1, 0],
+            "position_sigma_km": [0.35, 0.35, 0.35],
+	    "velocity_sigma_km_s": [0.00035, 0.00035, 0.00035]
+        },
+	"cam4": {
+            "SMA": 7500,
+            "ECC": 0.001,
+            "INC": 90,
+            "RAAN": 30,
+            "AOP": 0.0,
+            "TA": 0.0,
+            "obs_dir": [0, -1, 0],
+            "position_sigma_km": [0.35, 0.35, 0.35],
+	    "velocity_sigma_km_s": [0.00035, 0.00035, 0.00035]
+        },
+	"cam5": {
+            "SMA": 6700,
+            "ECC": 0.001,
+            "INC": 90,
+            "RAAN": 10,
+            "AOP": 0.0,
+            "TA": 0.0,
+            "obs_dir": [1, 0, 0],
+            "position_sigma_km": [0.35, 0.35, 0.35],
+	    "velocity_sigma_km_s": [0.00035, 0.00035, 0.00035]
+        }
+    },
+
+    "stations_llh": {
+      
+    }
+}}  }
+}}
+}}  }
+}}}}
+}}  }
+}}}}}}}}}}}

@@ -1,0 +1,45 @@
+{
+  "n_runs": 100,
+  "base_seed": 20260819,
+  "make_plots": true,
+
+  "sim_script": "../scripts/main.jl",
+  "ukf_script": "../scripts/Kalman_RSO.jl",
+
+  "sim_base_config": "config _cross_e.json",
+  "ukf_base_config": "kalman_config.json",
+  "output_root": "../output",
+
+  "observer_cases": [
+    {
+      "tag": "obs-02",
+      "observers": ["cam1", "cam2"]
+    },
+    {
+      "tag": "obs-03",
+      "observers": ["cam1", "cam2", "cam3"]
+    },
+    {
+      "tag": "obs-04",
+      "observers": ["cam1", "cam2", "cam3", "cam4"]
+    },
+    {
+      "tag": "obs-05",
+      "observers": ["cam1", "cam2", "cam3", "cam4", "cam5"]
+    }
+  ],
+
+  "sim_overrides": {
+    "graphic_display_flag": false,
+    "star_csv_flag": false,
+    "image_generation_flag": false,
+    "navigation_error_flag": true
+  },
+
+  "ukf_overrides": {
+    "plot_results": false,
+    "save_detailed_csv": false,
+    "target_rso": "deb_cross",
+    "save_summary_csv": true
+  }
+}
