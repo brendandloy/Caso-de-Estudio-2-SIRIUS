@@ -18,7 +18,7 @@
   "observers": {
     "cam1": {
       "pattern": "single",
-      "orbit": {"type": "leo", "altitude_km": 621.8637, "ECC": 0.001, "INC": 90, "RAAN": 0, "AOP": 0.0, "TA": 0.0},
+      "orbit": {"type": "LEO", "perigee_km": 614.8637, "apogee_km": 628.8637, "INC": 90, "RAAN": 0, "AOP": 0.0, "TA": 0.0},
       "pointing": {"type": "fixed", "dir": [0.0, 1.0, 0.0]},
       "position_sigma_km": [0.015, 0.015, 0.015],
       "velocity_sigma_km_s": [0.00002, 0.00002, 0.00002]

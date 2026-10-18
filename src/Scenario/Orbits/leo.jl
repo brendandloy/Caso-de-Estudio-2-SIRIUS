@@ -1,39 +1,65 @@
-# Órbita LEO genérica. Dos formas de definir el tamaño:
+# =============================================================================
+# leo.jl
 #
-#   a) altitud media:      {"type": "leo", "altitude_km": 600, "ECC": 0.001, "INC": 51.6}
-#        SMA = R + altitude_km  (ECC opcional, por defecto 0)
-#   b) perigeo y apogeo:   {"type": "leo", "perigee_km": 500, "apogee_km": 900, "INC": 70}
-#        SMA = R + (hp + ha)/2 ,  ECC = (ha - hp) / (ha + hp + 2R)
+# Plugin de órbita: LEO genérica. Registra el tipo "LEO". Es keplerian con
+# unidades más cómodas (alturas en vez de SMA) y una comprobación de apogeo.
 #
-# RAAN, AOP y TA son opcionales (por defecto 0). Alturas medidas sobre R = ctx.R.
+# Dos formas excluyentes de dar el tamaño (alturas medidas sobre ctx.R):
+#   a) circular:  {"type": "LEO", "altitude_km": 600, "INC": 51.6, "RAAN": 0, "TA": 0}
+#        SMA = R + altitude_km,  ECC = 0
+#   b) elíptica:  {"type": "LEO", "perigee_km": 500, "apogee_km": 900,
+#                  "INC": 70, "RAAN": 0, "AOP": 90, "TA": 0}
+#        SMA = R + (hp + ha)/2,  ECC = (ha - hp) / (ha + hp + 2R)
+#
+# Obligatorios: INC, RAAN y TA. AOP solo es obligatorio si la órbita es
+# elíptica (en una circular no tiene significado físico y queda en 0).
+#
+# Funciones: leo_elements
+# =============================================================================
 
+"""
+    leo_elements(p, ctx) -> Dict{String,Any}
+
+Calcula los elementos keplerianos de una órbita LEO a partir de alturas,
+inclinación, RAAN y posición en la órbita.
+
+# Argumentos
+- `p::AbstractDict`: bloque `orbit` con `altitude_km` o `perigee_km`+`apogee_km`,
+  más `INC`, `RAAN`, `TA` y, si `ECC > 0`, `AOP`.
+- `ctx`: contexto del Builder (usa `ctx.R`).
+
+# Devuelve
+- `Dict{String,Any}` con `SMA, ECC, INC, RAAN, AOP, TA` (km y grados).
+
+# Excepciones
+- `ErrorException`: si aparece una clave no admitida (por ejemplo `ECC` o `SMA`).
+- `ErrorException`: si falta el tamaño de la órbita, `INC`, `RAAN`, `TA` o `AOP` con `ECC > 0`.
+- `ErrorException`: si `apogee_km < perigee_km` o se mezclan las dos formas.
+
+# Ejemplo
+```julia
+p = Dict("type" => "LEO", "altitude_km" => 600, "INC" => 51.6, "RAAN" => 0, "TA" => 0)
+leo_elements(p, ctx)        # SMA = 6978.1363, ECC = 0, INC = 51.6, RAAN = 0, AOP = 0, TA = 0
+```
+"""
 function leo_elements(p::AbstractDict, ctx)
-    Re = ctx.R
+    check_keys(p, ("type", "altitude_km", "perigee_km", "apogee_km", "INC", "RAAN", "AOP", "TA");
+               who = "LEO")
 
-    if haskey(p, "altitude_km")
-        sma = Re + getreq(p, "altitude_km")
-        ecc = getopt(p, "ECC", 0.0)
-    elseif haskey(p, "perigee_km") && haskey(p, "apogee_km")
-        hp = getreq(p, "perigee_km")
-        ha = getreq(p, "apogee_km")
-        ha >= hp || error("LEO: apogee_km must be >= perigee_km.")
-        sma = Re + (hp + ha) / 2
-        ecc = (ha - hp) / (ha + hp + 2Re)
-    else
-        error("LEO: provide 'altitude_km' or both 'perigee_km' and 'apogee_km'.")
-    end
+    sma, ecc = sma_ecc_from_altitudes(p, ctx; who = "LEO")
 
-    apogee_alt = sma * (1 + ecc) - Re
+    # Aviso si el apogeo sale de la región LEO (2000 km)
+    apogee_alt = sma * (1 + ecc) - ctx.R
     apogee_alt > 2000 && @warn "LEO: apogee altitude = $(round(apogee_alt, digits=1)) km (> 2000 km)."
 
     return Dict{String,Any}(
         "SMA"  => sma,
         "ECC"  => ecc,
         "INC"  => getreq(p, "INC"),
-        "RAAN" => getopt(p, "RAAN", 0.0),
-        "AOP"  => getopt(p, "AOP", 0.0),
-        "TA"   => getopt(p, "TA", 0.0)
+        "RAAN" => getreq(p, "RAAN"),
+        "AOP"  => get_aop(p, ecc),
+        "TA"   => getreq(p, "TA")
     )
 end
 
-register_orbit!("leo", leo_elements)
+register_orbit!("LEO", leo_elements)
