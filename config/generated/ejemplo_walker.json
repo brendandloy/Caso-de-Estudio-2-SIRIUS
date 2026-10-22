@@ -1,0 +1,177 @@
+{
+    "Duration_hours": 0.2,
+    "Data_time_step_seconds": 2,
+    "init_epoch": "2000-01-01T11:59:28",
+    "navigation_error_flag": true,
+    "graphic_display_flag": false,
+    "image_generation_flag": false,
+    "ignore_fov_for_measurements_flag": false,
+    "star_csv_flag": false,
+    "camera_config": {
+        "Vmag_lim": 10.0,
+        "fov_deg": 27,
+        "resolution_x": 1024,
+        "resolution_y": 1024,
+        "mag0": 8.0,
+        "flux0": 20000.0,
+        "fwhm_deg": 0.0659,
+        "background_level": 500,
+        "sigma_read_noise": 100.0,
+        "upper_percentile": 99.9,
+        "lower_percentage": 0.0,
+        "los_sigma_arcsec": 42.43
+    },
+    "photometry_config": {
+        "phi_sun": 455.0,
+        "glare_angle_deg": 15.0,
+        "Vref_phong": -10.0,
+        "Fref_phong": 1.0e-6
+    },
+    "objectives": {
+        "deb": {
+            "SMA": 7178.1363,
+            "ECC": 0.0,
+            "INC": 55.0,
+            "RAAN": 10.0,
+            "AOP": 0.0,
+            "TA": 5.0,
+            "w_deg_s": 0,
+            "w_dir": [1, 0, 0]
+        }
+    },
+    "observers": {
+        "sat1": {
+            "SMA": 7178.1363,
+            "ECC": 0.0,
+            "INC": 55.0,
+            "RAAN": 0.0,
+            "AOP": 0.0,
+            "TA": 0.0,
+            "obs_dir": [0.0, 1.0, 0.0],
+            "position_sigma_km": [0.015, 0.015, 0.015],
+            "velocity_sigma_km_s": [2.0e-5, 2.0e-5, 2.0e-5]
+        },
+        "sat2": {
+            "SMA": 7178.1363,
+            "ECC": 0.0,
+            "INC": 55.0,
+            "RAAN": 0.0,
+            "AOP": 0.0,
+            "TA": 90.0,
+            "obs_dir": [0.0, 1.0, 0.0],
+            "position_sigma_km": [0.015, 0.015, 0.015],
+            "velocity_sigma_km_s": [2.0e-5, 2.0e-5, 2.0e-5]
+        },
+        "sat3": {
+            "SMA": 7178.1363,
+            "ECC": 0.0,
+            "INC": 55.0,
+            "RAAN": 0.0,
+            "AOP": 0.0,
+            "TA": 180.0,
+            "obs_dir": [0.0, 1.0, 0.0],
+            "position_sigma_km": [0.015, 0.015, 0.015],
+            "velocity_sigma_km_s": [2.0e-5, 2.0e-5, 2.0e-5]
+        },
+        "sat4": {
+            "SMA": 7178.1363,
+            "ECC": 0.0,
+            "INC": 55.0,
+            "RAAN": 0.0,
+            "AOP": 0.0,
+            "TA": 270.0,
+            "obs_dir": [0.0, 1.0, 0.0],
+            "position_sigma_km": [0.015, 0.015, 0.015],
+            "velocity_sigma_km_s": [2.0e-5, 2.0e-5, 2.0e-5]
+        },
+        "sat5": {
+            "SMA": 7178.1363,
+            "ECC": 0.0,
+            "INC": 55.0,
+            "RAAN": 120.0,
+            "AOP": 0.0,
+            "TA": 29.999999999999996,
+            "obs_dir": [0.0, 1.0, 0.0],
+            "position_sigma_km": [0.015, 0.015, 0.015],
+            "velocity_sigma_km_s": [2.0e-5, 2.0e-5, 2.0e-5]
+        },
+        "sat6": {
+            "SMA": 7178.1363,
+            "ECC": 0.0,
+            "INC": 55.0,
+            "RAAN": 120.0,
+            "AOP": 0.0,
+            "TA": 119.99999999999999,
+            "obs_dir": [0.0, 1.0, 0.0],
+            "position_sigma_km": [0.015, 0.015, 0.015],
+            "velocity_sigma_km_s": [2.0e-5, 2.0e-5, 2.0e-5]
+        },
+        "sat7": {
+            "SMA": 7178.1363,
+            "ECC": 0.0,
+            "INC": 55.0,
+            "RAAN": 120.0,
+            "AOP": 0.0,
+            "TA": 210.00000000000003,
+            "obs_dir": [0.0, 1.0, 0.0],
+            "position_sigma_km": [0.015, 0.015, 0.015],
+            "velocity_sigma_km_s": [2.0e-5, 2.0e-5, 2.0e-5]
+        },
+        "sat8": {
+            "SMA": 7178.1363,
+            "ECC": 0.0,
+            "INC": 55.0,
+            "RAAN": 120.0,
+            "AOP": 0.0,
+            "TA": 300.0,
+            "obs_dir": [0.0, 1.0, 0.0],
+            "position_sigma_km": [0.015, 0.015, 0.015],
+            "velocity_sigma_km_s": [2.0e-5, 2.0e-5, 2.0e-5]
+        },
+        "sat9": {
+            "SMA": 7178.1363,
+            "ECC": 0.0,
+            "INC": 55.0,
+            "RAAN": 240.0,
+            "AOP": 0.0,
+            "TA": 59.999999999999986,
+            "obs_dir": [0.0, 1.0, 0.0],
+            "position_sigma_km": [0.015, 0.015, 0.015],
+            "velocity_sigma_km_s": [2.0e-5, 2.0e-5, 2.0e-5]
+        },
+        "sat10": {
+            "SMA": 7178.1363,
+            "ECC": 0.0,
+            "INC": 55.0,
+            "RAAN": 240.0,
+            "AOP": 0.0,
+            "TA": 150.0,
+            "obs_dir": [0.0, 1.0, 0.0],
+            "position_sigma_km": [0.015, 0.015, 0.015],
+            "velocity_sigma_km_s": [2.0e-5, 2.0e-5, 2.0e-5]
+        },
+        "sat11": {
+            "SMA": 7178.1363,
+            "ECC": 0.0,
+            "INC": 55.0,
+            "RAAN": 240.0,
+            "AOP": 0.0,
+            "TA": 240.00000000000003,
+            "obs_dir": [0.0, 1.0, 0.0],
+            "position_sigma_km": [0.015, 0.015, 0.015],
+            "velocity_sigma_km_s": [2.0e-5, 2.0e-5, 2.0e-5]
+        },
+        "sat12": {
+            "SMA": 7178.1363,
+            "ECC": 0.0,
+            "INC": 55.0,
+            "RAAN": 240.0,
+            "AOP": 0.0,
+            "TA": 330.0,
+            "obs_dir": [0.0, 1.0, 0.0],
+            "position_sigma_km": [0.015, 0.015, 0.015],
+            "velocity_sigma_km_s": [2.0e-5, 2.0e-5, 2.0e-5]
+        }
+    },
+    "stations_llh": {}
+}

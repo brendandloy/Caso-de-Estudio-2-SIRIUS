@@ -26,7 +26,7 @@
 # Los seis elementos keplerianos que lee el simulador
 const ELEMENT_KEYS = ("SMA", "ECC", "INC", "RAAN", "AOP", "TA")
 
-# Valores de fábrica del escenario (los de tus config_*.json); se pisan con "template" y "scenario"
+# Valores de fábrica del escenario (los de tus config_*.json); se sobreescriben con "template" y "scenario"
 const DEFAULT_TEMPLATE = Dict{String,Any}(
     "Duration_hours"                   => 0.2,
     "Data_time_step_seconds"           => 2,

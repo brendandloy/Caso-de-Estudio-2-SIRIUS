@@ -1,0 +1,108 @@
+{
+    "Duration_hours": 0.2,
+    "Data_time_step_seconds": 2,
+    "init_epoch": "2000-01-01T11:59:28",
+    "navigation_error_flag": true,
+    "graphic_display_flag": false,
+    "image_generation_flag": false,
+    "ignore_fov_for_measurements_flag": false,
+    "star_csv_flag": false,
+    "camera_config": {
+        "Vmag_lim": 10.0,
+        "fov_deg": 27,
+        "resolution_x": 1024,
+        "resolution_y": 1024,
+        "mag0": 8.0,
+        "flux0": 20000.0,
+        "fwhm_deg": 0.0659,
+        "background_level": 500,
+        "sigma_read_noise": 100.0,
+        "upper_percentile": 99.9,
+        "lower_percentage": 0.0,
+        "los_sigma_arcsec": 42.43
+    },
+    "photometry_config": {
+        "phi_sun": 455.0,
+        "glare_angle_deg": 15.0,
+        "Vref_phong": -10.0,
+        "Fref_phong": 1.0e-6
+    },
+    "objectives": {
+        "deb1": {
+            "SMA": 6999.996279998594,
+            "ECC": 7.143146673291717e-5,
+            "INC": 90.0,
+            "RAAN": 0.0,
+            "AOP": 199.99999999993364,
+            "TA": 180.00000000006636,
+            "w_deg_s": 0,
+            "w_dir": [1, 0, 0]
+        },
+        "deb2": {
+            "SMA": 6999.997455715052,
+            "ECC": 1.2336747973915664e-7,
+            "INC": 90.00084050153377,
+            "RAAN": 359.99769279230173,
+            "AOP": 20.016370241507893,
+            "TA": 359.9999999724947,
+            "w_deg_s": 0,
+            "w_dir": [1, 0, 0]
+        },
+        "sat1": {
+            "SMA": 6999.996277145193,
+            "ECC": 7.143279269380902e-5,
+            "INC": 90.00083978234673,
+            "RAAN": 359.9976927169643,
+            "AOP": 199.9999999830397,
+            "TA": 180.00000000005141,
+            "w_deg_s": 0,
+            "w_dir": [1, 0, 0]
+        },
+        "sat2": {
+            "SMA": 6999.996277140499,
+            "ECC": 7.142442533840927e-5,
+            "INC": 89.99916009767573,
+            "RAAN": 0.0023076126712792823,
+            "AOP": 19.99999998300911,
+            "TA": 7.716979823634931e-11,
+            "w_deg_s": 0,
+            "w_dir": [1, 0, 0]
+        }
+    },
+    "observers": {
+        "cam1": {
+            "SMA": 6999.996407117408,
+            "ECC": 7.142350895934712e-5,
+            "INC": 90.0,
+            "RAAN": 359.9918154689799,
+            "AOP": 180.0,
+            "TA": 180.0,
+            "obs_dir": [0.0, 1.0, 0.0],
+            "position_sigma_km": [0.015, 0.015, 0.015],
+            "velocity_sigma_km_s": [2.0e-5, 2.0e-5, 2.0e-5]
+        },
+        "cam2": {
+            "SMA": 6999.996567871963,
+            "ECC": 7.144073021877651e-5,
+            "INC": 89.99291198830593,
+            "RAAN": 0.0040935809496440954,
+            "AOP": 59.976078664203804,
+            "TA": 300.0168325645092,
+            "obs_dir": [0.0, 1.0, 0.0],
+            "position_sigma_km": [0.015, 0.015, 0.015],
+            "velocity_sigma_km_s": [2.0e-5, 2.0e-5, 2.0e-5]
+        },
+        "cam3": {
+            "SMA": 6999.996567871963,
+            "ECC": 7.144073021877648e-5,
+            "INC": 90.00708801169405,
+            "RAAN": 0.004093580949644101,
+            "AOP": 300.0239213357962,
+            "TA": 59.98316743549082,
+            "obs_dir": [0.0, 1.0, 0.0],
+            "position_sigma_km": [0.015, 0.015, 0.015],
+            "velocity_sigma_km_s": [2.0e-5, 2.0e-5, 2.0e-5]
+        }
+    },
+    "stations_llh": {}
+}

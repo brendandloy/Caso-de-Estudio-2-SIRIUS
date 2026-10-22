@@ -1,0 +1,24 @@
+{
+  "scenario": {
+    "init_epoch": "2000-01-01T11:59:28",
+    "Duration_hours": 0.2,
+    "Data_time_step_seconds": 2,
+    "graphic_display_flag": false
+  },
+
+  "objectives": {
+    "deb": {
+      "orbit": {"type": "LEO", "altitude_km": 800, "INC": 55, "RAAN": 10, "TA": 5},
+      "w_deg_s": 0
+    }
+  },
+
+  "observers": {
+    "sat": {
+      "pattern": "walker",
+      "orbit": {"type": "LEO", "altitude_km": 800, "INC": 55, "RAAN": 0, "TA": 0},
+      "walker": {"total": 12, "planes": 3, "phasing": 1, "spread": "delta"},
+      "pointing": {"type": "fixed", "dir": [0.0, 1.0, 0.0]}
+    }
+  }
+}

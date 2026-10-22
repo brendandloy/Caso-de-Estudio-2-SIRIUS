@@ -1,0 +1,30 @@
+{
+  "scenario": {
+    "init_epoch": "2000-01-01T11:59:28",
+    "Duration_hours": 0.2,
+    "Data_time_step_seconds": 2,
+    "graphic_display_flag": false
+  },
+
+  "objectives": {
+    "deb": {
+      "pattern": "formation",
+      "chief": {"type": "LEO", "perigee_km": 614.8637, "apogee_km": 628.8637, "INC": 90, "RAAN": 0, "AOP": 0, "TA": 0.5},
+      "layout": {"type": "element_offsets", "offsets": [
+        {},
+        {"dM": 0.05},
+        {"dINC": 0.02, "dRAAN": 0.02}
+      ]},
+      "w_deg_s": 0
+    }
+  },
+
+  "observers": {
+    "cam": {
+      "pattern": "formation",
+      "chief": {"type": "LEO", "altitude_km": 621.86, "INC": 90, "RAAN": 0, "TA": 0},
+      "layout": {"type": "along_track", "n": 3, "spacing_km": 10},
+      "pointing": {"type": "fixed", "dir": [0.0, 1.0, 0.0]}
+    }
+  }
+}

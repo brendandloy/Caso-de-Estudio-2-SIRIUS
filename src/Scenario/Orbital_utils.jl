@@ -15,6 +15,10 @@
 #   parse_ltan              : "10:30" / 10.5 -> horas decimales.
 #   ut_hours                : hora UT del día de una época, en horas.
 #   era_deg                 : ángulo de rotación terrestre (ERA) del simulador.
+#   true_to_mean_anomaly_deg: anomalía verdadera -> media (para desplazar miembros).
+#   mean_to_true_anomaly_deg: anomalía media -> verdadera (resuelve Kepler por Newton).
+#   elements_to_rv          : elementos keplerianos -> posición y velocidad inerciales.
+#   cartesian_to_kepler     : posición y velocidad inerciales -> elementos keplerianos.
 #   sso_inclination_deg     : inclinación de una órbita heliosíncrona.
 #   raan_from_ltan          : RAAN que corresponde a una LTAN dada.
 #
@@ -261,4 +265,192 @@ raan_from_ltan(10.5, DateTime("2000-01-01T11:59:28"))     # ≈ 257.96
 function raan_from_ltan(ltan_h::Real, epoch::DateTime)::Float64
     λ_node = 15.0 * (ltan_h - ut_hours(epoch))   # longitud este del nodo ascendente (deg)
     return mod(era_deg(epoch) + λ_node, 360.0)
+end
+
+"""
+    true_to_mean_anomaly_deg(ta_deg, ecc) -> Float64
+
+Convierte anomalía verdadera en anomalía media (deg), pasando por la excéntrica:
+`tan(E/2) = sqrt((1-e)/(1+e))·tan(ν/2)` y `M = E - e·sin(E)`.
+
+Por qué existe: la anomalía media crece linealmente con el tiempo, así que es la
+variable correcta para separar miembros de una formación (misma órbita, distinto
+instante) sin que la excentricidad distorsione el espaciado.
+
+# Argumentos
+- `ta_deg::Real`: anomalía verdadera en grados.
+- `ecc::Real`: excentricidad, en [0, 1).
+
+# Devuelve
+- `Float64`: anomalía media en grados, en [0, 360).
+
+# Excepciones
+- Ninguna (con `ecc` fuera de [0, 1) el resultado no tiene sentido físico).
+
+# Ejemplo
+```julia
+true_to_mean_anomaly_deg(90.0, 0.0)       # 90.0 (en una órbita circular M = ν)
+true_to_mean_anomaly_deg(90.0, 0.2)       # ≈ 67.24
+```
+"""
+function true_to_mean_anomaly_deg(ta_deg::Real, ecc::Real)::Float64
+    ν = deg2rad(ta_deg)
+    # Anomalía excéntrica; atan con dos argumentos conserva el cuadrante correcto
+    E = 2 * atan(sqrt(1 - ecc) * sin(ν / 2), sqrt(1 + ecc) * cos(ν / 2))
+    return mod(rad2deg(E - ecc * sin(E)), 360.0)
+end
+
+"""
+    mean_to_true_anomaly_deg(m_deg, ecc) -> Float64
+
+Convierte anomalía media en verdadera (deg). Resuelve la ecuación de Kepler
+`M = E - e·sin(E)` por Newton-Raphson y después `ν = 2·atan(...)`.
+
+# Argumentos
+- `m_deg::Real`: anomalía media en grados (cualquier valor, se reduce a [0, 360)).
+- `ecc::Real`: excentricidad, en [0, 1).
+
+# Devuelve
+- `Float64`: anomalía verdadera en grados, en [0, 360).
+
+# Excepciones
+- `ErrorException`: si `ecc` no está en [0, 1).
+- `ErrorException`: si Newton no converge (no debería ocurrir con `ecc < 1`).
+
+# Ejemplo
+```julia
+mean_to_true_anomaly_deg(90.0, 0.0)       # 90.0
+mean_to_true_anomaly_deg(67.2354, 0.2)    # ≈ 90.0 (inversa de true_to_mean_anomaly_deg)
+```
+"""
+function mean_to_true_anomaly_deg(m_deg::Real, ecc::Real)::Float64
+    0 <= ecc < 1 || error("mean_to_true_anomaly_deg: eccentricity $ecc must be in [0, 1).")
+
+    M = deg2rad(mod(m_deg, 360.0))
+    E = ecc < 0.8 ? M : π          # semilla estándar de Newton
+
+    for _ in 1:50
+        dE = (E - ecc * sin(E) - M) / (1 - ecc * cos(E))
+        E -= dE
+        if abs(dE) < 1e-13
+            ν = 2 * atan(sqrt(1 + ecc) * sin(E / 2), sqrt(1 - ecc) * cos(E / 2))
+            return mod(rad2deg(ν), 360.0)
+        end
+    end
+    error("mean_to_true_anomaly_deg: Kepler equation did not converge (M=$m_deg deg, e=$ecc).")
+end
+
+"""
+    elements_to_rv(el, mu) -> Tuple{Vector{Float64},Vector{Float64}}
+
+Convierte elementos keplerianos en posición y velocidad inerciales (km, km/s).
+Usa la misma convención que `Transformations.kepler_to_cartesian` del simulador
+(perifocal y rotaciones `Rz(Ω)·Rx(i)·Rz(ω)`), pero con vectores simples.
+
+Por qué existe: el generador necesita pasar de elementos a estado cartesiano
+para construir formaciones relativas. Se reimplementa aquí para que Scenario no
+dependa de los tipos del simulador (`State`, `StaticArrays`).
+
+# Argumentos
+- `el::AbstractDict`: elementos con claves `SMA, ECC, INC, RAAN, AOP, TA` (km y grados).
+- `mu::Real`: parámetro gravitacional (km³/s²).
+
+# Devuelve
+- `(r, v)`: dos `Vector{Float64}` de 3 componentes, en el sistema inercial.
+
+# Excepciones
+- `KeyError`: si falta alguno de los seis elementos.
+
+# Ejemplo
+```julia
+el = Dict("SMA" => 7000.0, "ECC" => 0.0, "INC" => 90.0, "RAAN" => 0.0, "AOP" => 0.0, "TA" => 0.0)
+r, v = elements_to_rv(el, 398600.4415)      # r = [7000, 0, 0], v ≈ [0, 0, 7.546]
+```
+"""
+function elements_to_rv(el::AbstractDict, mu::Real)
+    a, e = Float64(el["SMA"]), Float64(el["ECC"])
+    i, Ω, ω, ν = (deg2rad(Float64(el[k])) for k in ("INC", "RAAN", "AOP", "TA"))
+
+    p  = a * (1 - e^2)
+    rm = p / (1 + e * cos(ν))                                   # módulo de la posición
+
+    # Estado en el sistema perifocal
+    r_pf = [rm * cos(ν), rm * sin(ν), 0.0]
+    v_pf = sqrt(mu / p) .* [-sin(ν), e + cos(ν), 0.0]
+
+    # Rotación perifocal -> inercial
+    R3Ω = [cos(Ω) -sin(Ω) 0.0; sin(Ω) cos(Ω) 0.0; 0.0 0.0 1.0]
+    R1i = [1.0 0.0 0.0; 0.0 cos(i) -sin(i); 0.0 sin(i) cos(i)]
+    R3ω = [cos(ω) -sin(ω) 0.0; sin(ω) cos(ω) 0.0; 0.0 0.0 1.0]
+    Q = R3Ω * R1i * R3ω
+
+    return Q * r_pf, Q * v_pf
+end
+
+"""
+    cartesian_to_kepler(r, v, mu) -> Dict{String,Any}
+
+Convierte posición y velocidad inerciales en elementos keplerianos (km y grados).
+Es la inversa de `elements_to_rv`.
+
+Casos singulares (se resuelven con las mismas convenciones que `elements_to_rv`):
+- órbita circular (`ECC < 1e-10`): `AOP = 0` y `TA` es el argumento de latitud.
+- órbita ecuatorial: `RAAN = 0` y los ángulos se miden desde el eje x inercial.
+
+# Argumentos
+- `r::AbstractVector`: posición inercial (km).
+- `v::AbstractVector`: velocidad inercial (km/s).
+- `mu::Real`: parámetro gravitacional (km³/s²).
+
+# Devuelve
+- `Dict{String,Any}` con `SMA, ECC, INC, RAAN, AOP, TA`; los ángulos en [0, 360).
+
+# Excepciones
+- `ErrorException`: si el momento angular es nulo (movimiento rectilíneo).
+- `ErrorException`: si la órbita no está ligada (energía >= 0).
+
+# Ejemplo
+```julia
+r, v = elements_to_rv(el, 398600.4415)
+cartesian_to_kepler(r, v, 398600.4415)      # recupera `el` (error numérico ~1e-12)
+```
+"""
+function cartesian_to_kepler(r::AbstractVector, v::AbstractVector, mu::Real)
+    rn = norm(r)
+    h  = cross(r, v)
+    hn = norm(h)
+    hn > 0 || error("cartesian_to_kepler: zero angular momentum (rectilinear motion).")
+    ĥ = h / hn
+
+    energy = dot(v, v) / 2 - mu / rn
+    energy < 0 || error("cartesian_to_kepler: orbit is not bound (energy >= 0).")
+    a = -mu / (2 * energy)
+
+    evec = cross(v, h) / mu - r / rn                            # vector excentricidad
+    e = norm(evec)
+    inc = acos(clamp(ĥ[3], -1.0, 1.0))
+
+    # Línea de nodos; si es nula la órbita es ecuatorial y se toma el eje x como referencia
+    nvec = [-h[2], h[1], 0.0]
+    nn = norm(nvec)
+    equatorial = nn < 1e-10 * hn
+    xref = equatorial ? [1.0, 0.0, 0.0] : nvec / nn
+    raan = equatorial ? 0.0 : atan(nvec[2], nvec[1])
+    yref = cross(ĥ, xref)
+
+    # Ángulo de un vector dentro del plano orbital, medido desde xref
+    ang(w) = atan(dot(w, yref), dot(w, xref))
+
+    circular = e < 1e-10
+    aop = circular ? 0.0 : ang(evec)
+    ta  = circular ? ang(r) : ang(r) - aop
+
+    return Dict{String,Any}(
+        "SMA"  => a,
+        "ECC"  => e,
+        "INC"  => rad2deg(inc),
+        "RAAN" => mod(rad2deg(raan), 360.0),
+        "AOP"  => mod(rad2deg(aop), 360.0),
+        "TA"   => mod(rad2deg(ta), 360.0)
+    )
 end
