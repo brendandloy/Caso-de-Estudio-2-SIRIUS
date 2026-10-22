@@ -13,7 +13,7 @@ module Scenario
 #   Orbital_utils.jl   : helpers de física orbital compartidos por los plugins de órbita
 #   Relative_utils.jl  : helpers de movimiento relativo (LVLH -> elementos) para las disposiciones CW
 #   Orbits/            : keplerian.jl, leo.jl, sso.jl, geo.jl
-#   Patterns/          : single.jl, formation.jl, walker.jl
+#   Patterns/          : single.jl, formation.jl, walker.jl, tle.jl
 #   Layouts/           : along_track.jl, element_offsets.jl, cw_state.jl, cw_ellipse.jl, pco.jl
 #                        (disposiciones de una formación)
 #   Pointing/          : fixed.jl
@@ -31,6 +31,8 @@ module Scenario
 #
 # Dependencias: Constants (μ, R, ω_earth) y Transformations (theta0_from_utc),
 # que deben estar cargados antes (ver scripts/generate_config.jl).
+# Patterns/tle.jl necesita además los paquetes SatelliteToolboxTle,
+# SatelliteToolboxSgp4 y SatelliteToolboxTransformations en el Project.toml.
 # =============================================================================
 
 export generate_config, generate_config_file, write_config

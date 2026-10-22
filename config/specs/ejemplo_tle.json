@@ -1,0 +1,24 @@
+{
+  "scenario": {
+    "init_epoch": "2023-03-24T18:00:00",
+    "Duration_hours": 0.2,
+    "Data_time_step_seconds": 2,
+    "graphic_display_flag": false
+  },
+
+  "objectives": {
+    "deb": {
+      "pattern": "tle",
+      "file": "../tle/ejemplo.tle",
+      "select": {"norad_ids": [47699]},
+      "w_deg_s": 0
+    }
+  },
+
+  "observers": {
+    "cam": {
+      "orbit": {"type": "LEO", "altitude_km": 700, "INC": 98.47, "RAAN": 161.9, "TA": 328.0},
+      "pointing": {"type": "fixed", "dir": [0.0, 1.0, 0.0]}
+    }
+  }
+}

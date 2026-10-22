@@ -26,7 +26,7 @@
 # Los seis elementos keplerianos que lee el simulador
 const ELEMENT_KEYS = ("SMA", "ECC", "INC", "RAAN", "AOP", "TA")
 
-# Valores de fábrica del escenario (los de tus config_*.json); se sobreescriben con "template" y "scenario"
+# Valores de fábrica del escenario (los de tus config_*.json); se pisan con "template" y "scenario"
 const DEFAULT_TEMPLATE = Dict{String,Any}(
     "Duration_hours"                   => 0.2,
     "Data_time_step_seconds"           => 2,
@@ -391,6 +391,8 @@ grupo con su patrón, valida los miembros y añade los campos propios del rol.
 
 # Devuelve
 - `Dict{String,Any}`: nombre del miembro -> entrada lista para el JSON.
+  Nombres: `grupo_etiqueta` si el patrón da `_label` (p. ej. NORAD de un TLE),
+  `grupo` si hay un solo miembro y `grupo1..grupoN` si hay varios.
 
 # Excepciones
 - `ErrorException`: si el patrón no existe o no devuelve miembros.
@@ -416,8 +418,10 @@ function build_section(groups::AbstractDict, ctx, role::Symbol)
         n = length(members)
 
         for (idx, el) in enumerate(members)
-            # Un miembro usa el nombre del grupo; varios, nombre + índice (cam1, cam2, ...)
-            name = n == 1 ? String(gname) : string(gname, idx)
+            # Si el patrón da una etiqueta (p. ej. NORAD de un TLE): grupo_etiqueta (deb_25544)
+            # Si no: un miembro usa el nombre del grupo; varios, nombre + índice (cam1, cam2, ...)
+            name = haskey(el, "_label") ? string(gname, "_", el["_label"]) :
+                   n == 1               ? String(gname) : string(gname, idx)
             haskey(out, name) && error("Duplicate name '$name'.")
 
             validate_elements(name, el, ctx)
@@ -484,7 +488,10 @@ function generate_config(spec::AbstractDict; spec_dir::AbstractString = pwd())
     haskey(spec, "scenario") && deep_merge!(cfg, spec["scenario"])
     haskey(spec, "member_fields") && deep_merge!(member_fields, spec["member_fields"])
 
-    ctx = (epoch = DateTime(String(cfg["init_epoch"])), mu = μ, R = R, member_fields = member_fields)
+    # spec_dir: carpeta de la spec; los patrones convierten con ella rutas relativas en
+    # rutas completas (p. ej. archivos TLE), sin depender del directorio de trabajo
+    ctx = (epoch = DateTime(String(cfg["init_epoch"])), mu = μ, R = R,
+           member_fields = member_fields, spec_dir = spec_dir)
 
     objectives = build_section(get(spec, "objectives", Dict{String,Any}()), ctx, :objective)
     isempty(objectives) && error("The spec needs at least one objective.")
