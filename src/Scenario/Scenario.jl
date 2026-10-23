@@ -12,7 +12,7 @@ module Scenario
 #   Builder.jl         : valores por defecto, validación, construcción y escritura del JSON
 #   Orbital_utils.jl   : helpers de física orbital compartidos por los plugins de órbita
 #   Relative_utils.jl  : helpers de movimiento relativo (LVLH -> elementos) para las disposiciones CW
-#   Orbits/            : keplerian.jl, leo.jl, sso.jl, geo.jl
+#   Orbits/            : keplerian.jl, leo.jl, sso.jl, geo.jl, random_leo.jl
 #   Patterns/          : single.jl, formation.jl, walker.jl, tle.jl
 #   Layouts/           : along_track.jl, element_offsets.jl, cw_state.jl, cw_ellipse.jl, pco.jl
 #                        (disposiciones de una formación)
@@ -43,6 +43,7 @@ using ..Transformations: theta0_from_utc   # misma rotación terrestre (ERA) que
 using Dates
 using JSON3
 using LinearAlgebra
+using Random          # generador aleatorio con semilla (órbitas aleatorias)
 
 # -----------------------------------------------------------------------------
 # Registros

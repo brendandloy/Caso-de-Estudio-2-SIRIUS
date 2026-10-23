@@ -410,7 +410,9 @@ observers = build_section(groups, ctx, :observer)     # Dict con la clave "cam"
 function build_section(groups::AbstractDict, ctx, role::Symbol)
     out = Dict{String,Any}()
 
-    for (gname, group) in groups
+    # Grupos en orden alfabético: con órbitas aleatorias, la misma semilla da el mismo escenario
+    for gname in sort!(collect(keys(groups)))
+        group = groups[gname]
         pattern = String(get(group, "pattern", "single"))      # "single" si no se indica
         members = lookup(PATTERNS, "pattern", pattern)(group, ctx)
         isempty(members) && error("Group '$gname': pattern '$pattern' returned no members.")
@@ -454,7 +456,7 @@ valores de fábrica, el archivo `template` (opcional) y el bloque `scenario`,
 y construye `objectives` y `observers`.
 
 # Argumentos
-- `spec::AbstractDict`: spec ya leída (`template`, `scenario`, `member_fields`, `objectives`, `observers`).
+- `spec::AbstractDict`: spec ya leída (`template`, `scenario`, `member_fields`, `seed`, `objectives`, `observers`).
 - `spec_dir::AbstractString`: carpeta de la spec; resuelve rutas relativas de `template`.
 
 # Devuelve
@@ -488,10 +490,19 @@ function generate_config(spec::AbstractDict; spec_dir::AbstractString = pwd())
     haskey(spec, "scenario") && deep_merge!(cfg, spec["scenario"])
     haskey(spec, "member_fields") && deep_merge!(member_fields, spec["member_fields"])
 
-    # spec_dir: carpeta de la spec; los patrones convierten con ella rutas relativas en
-    # rutas completas (p. ej. archivos TLE), sin depender del directorio de trabajo
+    # Semilla de los números aleatorios: la de la spec o una nueva, que se imprime para poder repetir
+    if haskey(spec, "seed")
+        seed = getint(spec, "seed")
+        seed >= 0 || error("'seed' must be >= 0 (got $seed).")
+    else
+        seed = Int(rand(RandomDevice(), UInt32))
+        println("No 'seed' in spec; using seed = $seed (add \"seed\": $seed to the spec to repeat this scenario).")
+    end
+
+    # spec_dir permite a los patrones resolver rutas relativas a la spec (p. ej. archivos TLE)
+    # rng es el generador aleatorio común a todos los plugins (p. ej. random_LEO)
     ctx = (epoch = DateTime(String(cfg["init_epoch"])), mu = μ, R = R,
-           member_fields = member_fields, spec_dir = spec_dir)
+           member_fields = member_fields, spec_dir = spec_dir, rng = MersenneTwister(seed))
 
     objectives = build_section(get(spec, "objectives", Dict{String,Any}()), ctx, :objective)
     isempty(objectives) && error("The spec needs at least one objective.")
