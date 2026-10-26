@@ -1,0 +1,40 @@
+{
+  "seed": 2026,
+
+  "scenario": {
+    "init_epoch": "2000-01-01T11:59:28",
+    "Duration_hours": 0.2,
+    "Data_time_step_seconds": 2,
+    "graphic_display_flag": false
+  },
+
+  "objectives": {
+    "deb_spin": {
+      "orbit": {"type": "keplerian", "SMA": 8800.0, "ECC": 0.2, "INC": 90, "RAAN": 10, "AOP": 0.0, "TA": 357.5},
+      "attitude": {"type": "spin", "w_deg_s": 2.0, "w_dir": [0, 0, 1], "euler_deg": [0, 45, 0], "sequence": "321"}
+    },
+    "deb_random": {
+      "pattern": "formation",
+      "chief": {"type": "LEO", "altitude_km": 700, "INC": 90, "RAAN": 5, "TA": 2},
+      "layout": {"type": "along_track", "n": 3, "spacing_km": 20},
+      "attitude": {"type": "random", "w_range_deg_s": [0.5, 5.0]}
+    },
+    "sat_lvlh": {
+      "orbit": {"type": "LEO", "altitude_km": 750, "INC": 90, "RAAN": 8, "TA": 3},
+      "attitude": {"type": "fixed", "frame": "LVLH", "euler_deg": [0, 30, 0], "sequence": "321"}
+    },
+    "sat_nadir": {
+      "orbit": {"type": "LEO", "altitude_km": 800, "INC": 90, "RAAN": 12, "TA": 1},
+      "attitude": {"type": "pointing",
+                   "primary":   {"body_axis": [0, 0, 1], "target": "nadir"},
+                   "secondary": {"body_axis": [1, 0, 0], "target": "velocity"}}
+    }
+  },
+
+  "observers": {
+    "cam1": {
+      "orbit": {"type": "LEO", "perigee_km": 614.8637, "apogee_km": 628.8637, "INC": 90, "RAAN": 0, "AOP": 0.0, "TA": 0.0},
+      "pointing": {"type": "fixed", "dir": [0.0, 1.0, 0.0]}
+    }
+  }
+}

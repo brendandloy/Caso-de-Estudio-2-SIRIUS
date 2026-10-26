@@ -17,7 +17,7 @@ El código heredado se subió en el commit `Inicialización Repositorio`.
 Objetivos de esta iteración:
 
 - **Definición de escenarios:** generador automático de configuraciones (módulo `Scenario`). En curso.
-- **Dinámica de actitud de los objetos.** No iniciado.
+- **Dinámica de actitud de los objetos:** modos de actitud de los objetivos (módulo `Attitude`). En curso.
 - **Mayor realismo en la magnitud relativa de los objetos de la imagen.** No iniciado.
 
 El detalle de lo añadido está en [CHANGELOG.md](CHANGELOG.md).
@@ -41,32 +41,29 @@ El catálogo reducido se genera a partir del Hipparcos completo con `scripts/red
 
 ## Uso rápido
 
-**1. Generar la configuración del escenario** a partir de una *spec* corta:
+El escenario se escribe a mano como una *spec* corta en `config/specs/` y se simula con un solo comando:
 
 ```bash
-julia --project=. scripts/generate_config.jl config/specs/ejemplo_leo.json config/generated/ejemplo_leo.json
+julia --project=. scripts/main.jl config/specs/ejemplo_leo.json [output/]
 ```
 
-**2. Lanzar la simulación** con la configuración generada:
+`main.jl` genera primero el JSON completo en `config/generated/ejemplo_leo.json` (lo sobrescribe si existe) y después lanza la simulación con él. La spec es obligatoria; la carpeta de resultados es opcional (por defecto, `output/`). Desde VS Code se ejecuta `scripts/run_simulation_vscode.jl` (botón ▷ o *Julia: Execute active File in REPL*), cambiando en él la variable `spec`; el script activa el entorno del repositorio. La primera ejecución tarda varios minutos porque Julia precompila las dependencias.
 
-```bash
-julia --project=. scripts/main.jl config/generated/ejemplo_leo.json output/
-```
-
-Sin argumentos, `main.jl` usa `config/config.json` y escribe en `output/`. Desde VS Code se puede ejecutar `scripts/run_simulation_vscode.jl`.
+El JSON generado guarda las semillas usadas, así que una ejecución con elementos aleatorios se puede repetir. Para simular directamente un JSON completo (lo hace `MonteCarlo.jl`): `include("scripts/main.jl"); run_simulation("config/generated/ejemplo_leo.json", "output")`. Para generar el JSON sin simular: `julia --project=. scripts/generate_config.jl <spec.json>`.
 
 Ejemplo de *spec* (observador en LEO polar, objetivo en órbita kepleriana):
 
 ```json
 {
   "scenario":   {"init_epoch": "2000-01-01T11:59:28", "Duration_hours": 0.2, "Data_time_step_seconds": 2},
-  "objectives": {"deb":  {"orbit": {"type": "keplerian", "SMA": 8800, "ECC": 0.2, "INC": 90, "RAAN": 10, "AOP": 0, "TA": 357.5}, "w_deg_s": 0}},
+  "objectives": {"deb":  {"orbit": {"type": "keplerian", "SMA": 8800, "ECC": 0.2, "INC": 90, "RAAN": 10, "AOP": 0, "TA": 357.5},
+                          "attitude": {"type": "spin", "w_deg_s": 0}}},
   "observers":  {"cam1": {"orbit": {"type": "LEO", "altitude_km": 620, "INC": 90, "RAAN": 0, "TA": 0},
                           "pointing": {"type": "fixed", "dir": [0, 1, 0]}}}
 }
 ```
 
-Hay más ejemplos en `config/specs/` (SSO + GEO, formaciones, CW, Walker, TLE, órbitas aleatorias).
+Hay más ejemplos en `config/specs/` (SSO + GEO, formaciones, CW, Walker, TLE, órbitas aleatorias y modos de actitud en `ejemplo_actitud.json`).
 
 ## Estructura del repositorio
 
@@ -78,20 +75,27 @@ Hay más ejemplos en `config/specs/` (SSO + GEO, formaciones, CW, Walker, TLE, �
 │   └── *.json         # Configuraciones heredadas (escritas a mano), Kalman y Monte Carlo
 ├── data/              # Kernels SPICE y catálogo Hipparcos
 ├── output/            # Resultados de simulación (ignorado por git)
+├── test/
+│   └── test_attitude.jl            # Pruebas del módulo Attitude (convenciones del T6 y modos)
 ├── scripts/
-│   ├── main.jl                     # Simulación completa: propagación → fotometría → cámara → CSV
+│   ├── main.jl                     # Spec → JSON completo → simulación (propagación → actitud → fotometría → cámara → CSV)
 │   ├── generate_config.jl          # Spec → JSON de escenario
 │   ├── Kalman_RSO.jl               # Filtro de Kalman sobre las medidas LOS simuladas
 │   ├── MonteCarlo.jl               # Campañas Monte Carlo sobre la configuración
-│   ├── run_*_vscode.jl             # Lanzadores para VS Code
+│   ├── run_*_vscode.jl             # Lanzadores para VS Code (en el de simulación se elige la spec)
 │   └── reduce_hipparcos_catalog.py # Reducción del catálogo Hipparcos
 └── src/
     ├── Project.jl          # Módulo raíz: incluye todos los submódulos
     ├── Types.jl            # Tipos de datos (State, TrajectoryData, AttitudeData…)
     ├── Constants.jl        # Constantes físicas (μ, R, ω⊕, WGS84…)
     ├── Transformations.jl  # Rotaciones y conversiones de sistemas de referencia
+    ├── Attitude/           # Actitud de los objetivos (ver abajo)
+    │   ├── Attitude.jl       # Tipo base, registro de modos, lectura del bloque "attitude"
+    │   ├── Quaternions.jl    # Cuaternión, Euler, DCM elementales y sorteo uniforme (T6)
+    │   ├── Frames.jl         # LVLH, direcciones de apuntado y método TRIAD
+    │   └── modes/            # spin, random, fixed, pointing
     ├── Environment.jl      # Lectura de configuración, SPICE, Sol, eclipses, LOS, exportación CSV
-    ├── Propagator.jl       # Propagación orbital y de actitud
+    ├── Propagator.jl       # Propagación orbital
     ├── Geometry.jl         # Geometría de los objetos (mallas, normales, áreas, coeficientes ópticos)
     ├── Photometry.jl       # Magnitud aparente (modelo de Phong por facetas)
     ├── Camera_sim.jl       # Generación de imagen: estrellas, PSF, fondo, ruido
@@ -120,10 +124,29 @@ Convierte una *spec* corta en el JSON completo que lee `Environment.load_config`
 
 Para añadir un tipo nuevo basta con crear un archivo en la carpeta correspondiente y registrarlo con `register_orbit!`, `register_pattern!`, `register_layout!` o `register_pointing!`. No hay que modificar nada más.
 
+Cada grupo de objetivos debe definir su actitud con un bloque `attitude`, que se aplica a todos los miembros del grupo. Las claves antiguas `w_deg_s`/`w_dir` dan un error que muestra el bloque equivalente. En el modo `random`, cada miembro recibe su propia semilla a partir de la `seed` de la spec.
+
+### Actitud de los objetivos (`Attitude`)
+
+Cada objetivo del JSON del simulador lleva un bloque `attitude` obligatorio con un modo (`type`). El módulo lo valida y calcula la DCM cuerpo → ECI en cada instante:
+
+| Modo | Parámetros | Comportamiento |
+|---|---|---|
+| `spin` | `w_deg_s`, `w_dir` (ejes cuerpo), orientación inicial opcional | Giro con ω constante alrededor de un eje fijo en el cuerpo |
+| `random` | `w_range_deg_s` = [mín, máx], `seed` | Orientación inicial uniforme, eje uniforme y \|ω\| uniforme en el rango; luego como `spin` |
+| `fixed` | `frame` (`ECI` o `LVLH`), orientación | Orientación constante respecto a ECI o a la órbita |
+| `pointing` | `primary` y `secondary`: `body_axis` + `target` | Eje primario hacia `nadir`, `zenith`, `velocity`, `orbit_normal`, `sun` (con `-` para invertir) o un vector ECI; el secundario fija el giro (TRIAD) |
+
+La orientación se da como cuaternión `q` o como `euler_deg` + `sequence`. Para añadir un modo basta con crear un archivo en `src/Attitude/modes/` y registrarlo con `register_attitude!`. Detalle de cada modo: `?parse_spin`, `?parse_random`, `?parse_fixed`, `?parse_pointing`.
+
 ## Modelos físicos
 
 - **Propagación orbital:** gravedad central más armónicos zonales y teserales EGM2008 hasta grado y orden 4 (Montenbruck & Gill, 2000), integrada con `Vern9` (tolerancias 1e-11). Unidades: km, km/s; sistema inercial ECI (J2000).
-- **Actitud:** rotación a velocidad angular constante (módulo `w_deg_s`, eje `w_dir`) sobre una DCM cuerpo → inercial.
+- **Actitud de los objetivos:** convenciones del tema T6 (*Attitude Kinematics*). Cuaternión escalar primero, `C(q) = (q_η² − q_vᵀq_v) I + 2 q_v q_vᵀ − 2 q_η [q_v×]` como DCM referencia → cuerpo; Euler con secuencia `abc` y `C = C_c(θ3) C_b(θ2) C_a(θ1)`. El simulador usa la DCM cuerpo → ECI (`AttitudeData.DCM_b2i`, la transpuesta).
+  - `spin`/`random`: solución exacta de la cinemática con ω constante, `C_ib(t) = C_ib(0) R(ê, ω t)`. No es dinámicamente consistente salvo que ê sea un eje principal de inercia (aún no hay dinámica con tensor de inercia).
+  - `random`: orientación uniforme (cuaternión a partir de cuatro normales), eje uniforme en la esfera y |ω| uniforme en el rango.
+  - LVLH (igual que en `Relative_utils.jl`): x radial, z normal al plano orbital (r × v), y = z × x.
+  - `pointing`: método TRIAD con r, v (ECI) y la dirección del Sol (geocéntrica, SPICE). Error si las dos direcciones son paralelas en algún instante.
 - **Entorno:** dirección del Sol con SPICE (DE440s), eclipses por la Tierra, línea de visión y cono de deslumbramiento solar.
 - **Geometría de los objetos:** cuerpos triangulados (prismas, esferas, placas, cilindros, conos, troncos y fragmentos) con paneles opcionales y coeficientes ópticos aleatorios.
 - **Fotometría:** modelo de Phong por facetas (componentes difusa y especular) para obtener la magnitud aparente V.
@@ -136,7 +159,8 @@ Para añadir un tipo nuevo basta con crear un archivo en la carpeta correspondie
 
 ## Validación y resultados
 
-[PENDIENTE]
+- `test/test_attitude.jl` (41 comprobaciones superadas con Julia 1.13.2): matrices de Euler 3-2-1 y 3-1-3 y cuaternión frente a las expresiones del T6; el modo `spin` reproduce el antiguo `propagate_attitude` (diferencia < 1e-10) y cumple `dC_ib/dt = C_ib [ω×]`; media de las DCM aleatorias ≈ 0 (orientación uniforme); `fixed` en LVLH y `pointing` alinean los ejes pedidos. Se ejecuta con `julia --project=. test/test_attitude.jl`.
+- Resto de la herramienta: [PENDIENTE]
 
 ## Créditos
 

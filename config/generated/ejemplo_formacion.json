@@ -35,8 +35,10 @@
             "RAAN": 0.0,
             "AOP": 0.0,
             "TA": 0.5000000000000001,
-            "w_deg_s": 0,
-            "w_dir": [1, 0, 0]
+            "attitude": {
+                "type": "spin",
+                "w_deg_s": 0
+            }
         },
         "deb2": {
             "SMA": 7000.0,
@@ -45,8 +47,10 @@
             "RAAN": 0.0,
             "AOP": 0.0,
             "TA": 0.5501001209439952,
-            "w_deg_s": 0,
-            "w_dir": [1, 0, 0]
+            "attitude": {
+                "type": "spin",
+                "w_deg_s": 0
+            }
         },
         "deb3": {
             "SMA": 7000.0,
@@ -55,8 +59,10 @@
             "RAAN": 0.02,
             "AOP": 0.0,
             "TA": 0.5000000000000001,
-            "w_deg_s": 0,
-            "w_dir": [1, 0, 0]
+            "attitude": {
+                "type": "spin",
+                "w_deg_s": 0
+            }
         }
     },
     "observers": {

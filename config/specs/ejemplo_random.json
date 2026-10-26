@@ -11,7 +11,7 @@
   "objectives": {
     "deb": {
       "orbit": {"type": "random_LEO"},
-      "w_deg_s": 0
+      "attitude": {"type": "spin", "w_deg_s": 0}
     }
   },
 

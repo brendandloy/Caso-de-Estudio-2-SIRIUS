@@ -8,7 +8,7 @@
 #     "pattern": "tle",
 #     "file":    "../tle/catalogo.tle",
 #     "select":  {"norad_ids": [25544, 47699]},
-#     "w_deg_s": 0
+#     "attitude": {"type": "random", "w_range_deg_s": [0, 5]}
 #   }
 #
 # - "file": archivo con TLEs de 2 o 3 líneas (con nombre). Ruta absoluta o relativa

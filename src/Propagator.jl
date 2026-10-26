@@ -1,6 +1,6 @@
 module Propagator
 
-export propagate, propagate_attitude
+export propagate
 
 using ..Constants
 using ..Transformations
@@ -228,38 +228,6 @@ function propagate(obj_dict::Dict{Symbol, State}, start_time, sim_time, Δt_out)
 
     return results
 
-end
-
-# body axes initially coincide with ECI axes
-const DEFAULT_DCM_B2I = @SMatrix [
-    1.0 0.0 0.0;
-    0.0 1.0 0.0;
-    0.0 0.0 1.0
-]
-
-function propagate_attitude(w::Tuple{Float64,SVector{3,Float64}}, tvec::AbstractVector{<:Real};
-                            DCM0_b2i::SMatrix{3,3,Float64,9} = DEFAULT_DCM_B2I)::AttitudeData
-
-    w_mod, w_dir = w
-
-    DCM_b2i = Vector{SMatrix{3,3,Float64,9}}(undef, length(tvec))
-    DCM_b2i[1] = DCM0_b2i
-
-    if iszero(w_mod) || iszero(norm(w_dir))
-        @warn "Zero angular velocity. The object will be considered non-rotating."
-
-        fill!(DCM_b2i, DCM0_b2i)
-        return AttitudeData(DCM_b2i)
-    end
-
-    dt = Float64(tvec[2] - tvec[1])
-    delta_DCM = axis_angle_rotation(w_dir, w_mod * dt)
-
-    @inbounds for k in 2:length(tvec)
-        DCM_b2i[k] = delta_DCM * DCM_b2i[k - 1]
-    end
-
-    return AttitudeData(DCM_b2i)
 end
 
 end

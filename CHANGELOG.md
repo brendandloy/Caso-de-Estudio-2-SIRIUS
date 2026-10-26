@@ -4,6 +4,27 @@ Cambios relevantes de SIRIUS en el Caso de Estudio 2. Formato basado en [Keep a 
 
 ## [Sin publicar]
 
+### 2026-10-26
+#### Añadido
+- Módulo `Attitude` (`src/Attitude/`): actitud de los objetivos con cuatro modos, `spin` (ω constante), `random` (orientación, eje y |ω| aleatorios con semilla), `fixed` (orientación constante respecto a ECI o LVLH) y `pointing` (eje primario y secundario hacia nadir, Sol, velocidad, normal orbital o un vector ECI; método TRIAD). Orientaciones como cuaternión o ángulos de Euler, con las convenciones del tema T6.
+- Bloque `attitude` obligatorio en los objetivos de las specs del generador. En `random`, cada miembro recibe su propia semilla a partir de la `seed` de la spec.
+- Ejemplo `config/specs/ejemplo_actitud.json` con los cuatro modos.
+- Pruebas `test/test_attitude.jl`.
+
+#### Cambiado
+- `scripts/main.jl` recibe una spec (obligatoria) y la carpeta de resultados (opcional, `output/` por defecto): genera el JSON completo en `config/generated/` y simula con él. Ya no tiene valor por defecto `config/config.json`. `run_simulation(json, output)` sigue disponible para JSON completos (lo usa `MonteCarlo.jl`).
+- `run_simulation_vscode.jl`: la spec a simular se elige con la variable `spec`.
+- El módulo `Scenario` forma parte del módulo `Project`.
+- El simulador y el generador exigen el bloque `attitude` en cada objetivo; `w_deg_s`/`w_dir` dan un error con el bloque equivalente. Los JSON heredados de `config/` siguen en el formato antiguo.
+- Specs de ejemplo migradas al bloque `attitude` y `config/generated/` regenerado.
+- La spec ya no admite `w_deg_s`/`w_dir` en `member_fields`: la actitud se define en cada grupo de objetivos.
+
+#### Corregido
+- El eje de giro `w_dir` se normaliza; antes un eje no unitario (p. ej. `[1, 1, 0]`) daba una rotación incorrecta.
+
+#### Eliminado
+- `Propagator.propagate_attitude`, sustituido por `Attitude.compute_attitude`.
+
 ### 2026-10-23
 #### Añadido
 - Tipo de órbita `random_LEO`: LEO circular aleatoria. Admite rangos o valores fijos para la altitud, INC, RAAN y TA, con INC isótropa (cos INC uniforme).

@@ -7,6 +7,8 @@ module Project
 include("Types.jl")
 include("Constants.jl")
 include("Transformations.jl")
+include("Attitude/Attitude.jl")     # actitud de los objetivos; Environment la usa al leer el JSON
+include("Scenario/Scenario.jl")     # generador spec -> JSON completo (lo usa scripts/main.jl)
 include("Environment.jl")
 include("Propagator.jl")
 include("Visualization.jl")
@@ -21,6 +23,8 @@ include("Photometry.jl")
 using .Types
 using .Constants
 using .Transformations
+using .Attitude
+using .Scenario
 using .Environment
 using .Propagator
 using .Visualization

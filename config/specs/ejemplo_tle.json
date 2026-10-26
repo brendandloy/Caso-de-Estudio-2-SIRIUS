@@ -11,7 +11,7 @@
       "pattern": "tle",
       "file": "../tle/ejemplo.tle",
       "select": {"norad_ids": [47699]},
-      "w_deg_s": 0
+      "attitude": {"type": "spin", "w_deg_s": 0}
     }
   },
 

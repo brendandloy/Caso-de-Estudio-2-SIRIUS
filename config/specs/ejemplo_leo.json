@@ -10,8 +10,7 @@
     "deb_perp": {
       "pattern": "single",
       "orbit": {"type": "keplerian", "SMA": 8800.0, "ECC": 0.2, "INC": 90, "RAAN": 10, "AOP": 0.0, "TA": 357.5},
-      "w_deg_s": 0,
-      "w_dir": [1, 0, 0]
+      "attitude": {"type": "spin", "w_deg_s": 0}
     }
   },
 

@@ -14,13 +14,13 @@
         {"x_km": 0.5, "y_km": 0.0, "z_km": 0.0, "vx_km_s": 0.0, "vy_km_s": -0.0010780, "vz_km_s": 0.0},
         {"x_km": 0.0, "y_km": 2.0, "z_km": 0.3, "vx_km_s": 0.0, "vy_km_s": 0.0, "vz_km_s": 0.0}
       ]},
-      "w_deg_s": 0
+      "attitude": {"type": "spin", "w_deg_s": 0}
     },
     "sat": {
       "pattern": "formation",
       "chief": {"type": "LEO", "altitude_km": 621.86, "INC": 90, "RAAN": 0, "TA": 20},
       "layout": {"type": "cw_ellipse", "n": 2, "x_amplitude_km": 0.5, "y_center_km": 0.0, "z_amplitude_km": 0.3},
-      "w_deg_s": 0
+      "attitude": {"type": "spin", "w_deg_s": 0}
     }
   },
 

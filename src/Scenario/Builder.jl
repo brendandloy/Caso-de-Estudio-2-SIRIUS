@@ -14,13 +14,16 @@
 #   write_value, write_config       : escritura del JSON con orden de claves estable
 #   validate_elements               : comprobaciones físicas de cada miembro
 #   resolve_pointing                : obtiene obs_dir con el plugin de apuntado
-#   build_section                   : construye objectives u observers
+#   resolve_attitude                : bloque "attitude" de cada objetivo (validado con el módulo Attitude)
+#   build_section                  : construye objectives u observers
 #   generate_config                 : spec -> Dict completo de escenario
 #   generate_config_file            : spec.json -> JSON en disco
 #
 # Prioridad de valores (de menor a mayor):
 #   - Escenario: DEFAULT_TEMPLATE < archivo "template" < bloque "scenario".
 #   - Miembros:  DEFAULT_MEMBER_FIELDS < bloque "member_fields" < campo del grupo.
+#   - Actitud:   sin valor por defecto; cada grupo de objetivos la define con su
+#                bloque "attitude" (las claves antiguas w_deg_s / w_dir dan error).
 # =============================================================================
 
 # Los seis elementos keplerianos que lee el simulador
@@ -59,13 +62,15 @@ const DEFAULT_TEMPLATE = Dict{String,Any}(
     "stations_llh" => Dict{String,Any}()
 )
 
-# Valores de fábrica de los campos propios de cada miembro (cámaras y objetivos)
+# Valores de fábrica de los campos propios de cada miembro (cámaras)
+# La actitud de los objetivos no tiene valor de fábrica: es obligatoria en cada grupo
 const DEFAULT_MEMBER_FIELDS = Dict{String,Any}(
     "position_sigma_km"   => [0.015, 0.015, 0.015],
-    "velocity_sigma_km_s" => [0.00002, 0.00002, 0.00002],
-    "w_deg_s"             => 0.0,
-    "w_dir"               => [1, 0, 0]
+    "velocity_sigma_km_s" => [0.00002, 0.00002, 0.00002]
 )
+
+# Claves de "member_fields" que ya no se usan (la actitud va en el bloque "attitude" de cada grupo)
+const REMOVED_MEMBER_FIELDS = ("w_deg_s", "w_dir")
 
 # -----------------------------------------------------------------------------
 # JSON: lectura, fusión y escritura (con orden de claves estable)
@@ -148,7 +153,10 @@ const KEY_ORDER = [
     "background_level", "sigma_read_noise", "upper_percentile", "lower_percentage", "los_sigma_arcsec",
     "phi_sun", "glare_angle_deg", "Vref_phong", "Fref_phong",
     "SMA", "ECC", "INC", "RAAN", "AOP", "TA",
-    "w_deg_s", "w_dir", "obs_dir", "position_sigma_km", "velocity_sigma_km_s"
+    "attitude", "obs_dir", "position_sigma_km", "velocity_sigma_km_s",
+    # Dentro del bloque "attitude": primero el modo y luego sus parámetros
+    "type", "w_deg_s", "w_dir", "w_range_deg_s", "seed", "frame", "q", "euler_deg", "sequence",
+    "primary", "secondary", "body_axis", "target"
 ]
 
 # Clave -> posición en KEY_ORDER
@@ -379,6 +387,56 @@ function resolve_pointing(group::AbstractDict, member::AbstractDict, name::Abstr
 end
 
 """
+    resolve_attitude(group, name, ctx) -> Dict{String,Any}
+
+Obtiene el bloque `attitude` de un objetivo a partir de su grupo de la spec y
+lo valida con el mismo código que usa el simulador (`Attitude.parse_attitude`).
+
+Reglas:
+- El grupo debe tener un bloque `attitude` (mismas reglas que el simulador,
+  ver `Attitude.attitude_block`). Las claves antiguas `w_deg_s` / `w_dir` dan error.
+- Modo `random`: cada miembro recibe su propia semilla, sacada de un flujo
+  aleatorio de la spec separado del de las órbitas (cambiar la actitud no altera
+  las órbitas aleatorias). Por eso la spec no admite `seed` dentro del bloque.
+
+# Argumentos
+- `group::AbstractDict`: grupo de la spec al que pertenece el objetivo.
+- `name::AbstractString`: nombre del objetivo, para los mensajes de error.
+- `ctx`: contexto del Builder (usa `ctx.rng_attitude`).
+
+# Devuelve
+- `Dict{String,Any}`: bloque `attitude` listo para el JSON (copia; no modifica la spec).
+
+# Excepciones
+- `ErrorException`: si el grupo no tiene bloque `attitude`, usa las claves antiguas
+  `w_deg_s` / `w_dir` o pone `seed` en un bloque `random`.
+- Cualquier error de validación de `Attitude.parse_attitude`.
+
+# Ejemplo
+```julia
+resolve_attitude(Dict("attitude" => Dict("type" => "spin", "w_deg_s" => 0)), "deb", ctx)
+# Dict("type" => "spin", "w_deg_s" => 0)
+resolve_attitude(Dict("attitude" => Dict("type" => "random", "w_range_deg_s" => [0, 5])), "deb1", ctx)
+# Dict("type" => "random", "w_range_deg_s" => [0, 5], "seed" => 2861592718)
+```
+"""
+function resolve_attitude(group::AbstractDict, name::AbstractString, ctx)
+    # Copia del bloque (el mismo grupo da varios miembros); error si falta o usa w_deg_s/w_dir
+    block = attitude_block(group, name)
+
+    # random: una semilla distinta por miembro, reproducible con la "seed" de la spec
+    if get(block, "type", nothing) == "random"
+        haskey(block, "seed") && error(
+            "Objective '$name': do not put 'seed' in a 'random' attitude of a spec; " *
+            "each member gets its own seed from the spec's top-level 'seed'.")
+        block["seed"] = Int(rand(ctx.rng_attitude, UInt32))
+    end
+
+    parse_attitude(block, name)       # solo valida; el simulador lo volverá a leer del JSON
+    return block
+end
+
+"""
     build_section(groups, ctx, role) -> Dict{String,Any}
 
 Construye la sección `objectives` u `observers` del escenario: expande cada
@@ -387,7 +445,7 @@ grupo con su patrón, valida los miembros y añade los campos propios del rol.
 # Argumentos
 - `groups::AbstractDict`: grupos de la spec (nombre del grupo -> definición).
 - `ctx`: contexto del Builder (incluye `ctx.member_fields`).
-- `role::Symbol`: `:observer` (añade `obs_dir` y sigmas) u otro valor, que se trata como objetivo (añade `w_deg_s` y `w_dir`).
+- `role::Symbol`: `:observer` (añade `obs_dir` y sigmas) u otro valor, que se trata como objetivo (añade `attitude`).
 
 # Devuelve
 - `Dict{String,Any}`: nombre del miembro -> entrada lista para el JSON.
@@ -398,6 +456,7 @@ grupo con su patrón, valida los miembros y añade los campos propios del rol.
 - `ErrorException`: si el patrón no existe o no devuelve miembros.
 - `ErrorException`: si hay nombres duplicados o un miembro no supera la validación.
 - `ErrorException`: si un observador no tiene un bloque `pointing` válido.
+- `ErrorException`: si un objetivo no tiene una actitud válida (ver `resolve_attitude`).
 
 # Ejemplo
 ```julia
@@ -436,9 +495,8 @@ function build_section(groups::AbstractDict, ctx, role::Symbol)
                 entry["position_sigma_km"]   = get(group, "position_sigma_km",   ctx.member_fields["position_sigma_km"])
                 entry["velocity_sigma_km_s"] = get(group, "velocity_sigma_km_s", ctx.member_fields["velocity_sigma_km_s"])
             else
-                # Objetivos: velocidad angular y su eje
-                entry["w_deg_s"] = get(group, "w_deg_s", ctx.member_fields["w_deg_s"])
-                entry["w_dir"]   = get(group, "w_dir",   ctx.member_fields["w_dir"])
+                # Objetivos: bloque de actitud (obligatorio en el grupo)
+                entry["attitude"] = resolve_attitude(group, name, ctx)
             end
 
             out[name] = entry
@@ -490,6 +548,11 @@ function generate_config(spec::AbstractDict; spec_dir::AbstractString = pwd())
     haskey(spec, "scenario") && deep_merge!(cfg, spec["scenario"])
     haskey(spec, "member_fields") && deep_merge!(member_fields, spec["member_fields"])
 
+    # w_deg_s/w_dir en member_fields se ignorarían en silencio: la actitud va en cada grupo
+    for k in REMOVED_MEMBER_FIELDS
+        haskey(member_fields, k) && error("'member_fields' no longer accepts '$k': define the attitude in each objective group.")
+    end
+
     # Semilla de los números aleatorios: la de la spec o una nueva, que se imprime para poder repetir
     if haskey(spec, "seed")
         seed = getint(spec, "seed")
@@ -501,8 +564,10 @@ function generate_config(spec::AbstractDict; spec_dir::AbstractString = pwd())
 
     # spec_dir permite a los patrones resolver rutas relativas a la spec (p. ej. archivos TLE)
     # rng es el generador aleatorio común a todos los plugins (p. ej. random_LEO)
+    # rng_attitude da las semillas de las actitudes "random"; va aparte para no alterar las órbitas
     ctx = (epoch = DateTime(String(cfg["init_epoch"])), mu = μ, R = R,
-           member_fields = member_fields, spec_dir = spec_dir, rng = MersenneTwister(seed))
+           member_fields = member_fields, spec_dir = spec_dir, rng = MersenneTwister(seed),
+           rng_attitude = MersenneTwister(seed + 1))
 
     objectives = build_section(get(spec, "objectives", Dict{String,Any}()), ctx, :objective)
     isempty(objectives) && error("The spec needs at least one objective.")
@@ -550,4 +615,4 @@ function generate_config_file(spec_path::AbstractString, out_path::AbstractStrin
     println("  objectives: ", join(sort!(collect(keys(cfg["objectives"])); by = sortkey), ", "))
     println("  observers:  ", join(sort!(collect(keys(cfg["observers"]));  by = sortkey), ", "))
     return out_path
-end
+end

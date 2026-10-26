@@ -35,8 +35,10 @@
             "RAAN": 257.9602533862468,
             "AOP": 0.0,
             "TA": 1.0,
-            "w_deg_s": 0,
-            "w_dir": [1, 0, 0]
+            "attitude": {
+                "type": "spin",
+                "w_deg_s": 0
+            }
         },
         "sat_geo": {
             "SMA": 42164.17292057922,
@@ -45,8 +47,10 @@
             "RAAN": 0.0,
             "AOP": 0.0,
             "TA": 280.3269200529134,
-            "w_deg_s": 0,
-            "w_dir": [1, 0, 0]
+            "attitude": {
+                "type": "spin",
+                "w_deg_s": 0
+            }
         }
     },
     "observers": {

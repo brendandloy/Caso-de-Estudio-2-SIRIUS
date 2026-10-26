@@ -14,7 +14,7 @@
 # - "chief": bloque "orbit" de cualquier tipo registrado (LEO, SSO, GEO, keplerian...).
 # - "layout": cómo se reparten los miembros (ver carpeta Layouts/).
 # Los miembros se llaman cam1..camN (los nombra el Builder). El resto de campos del
-# grupo (pointing, sigmas, w_deg_s...) se aplican igual a todos los miembros.
+# grupo (pointing, sigmas, attitude...) se aplican igual a todos los miembros.
 #
 # Funciones: formation_pattern
 # =============================================================================

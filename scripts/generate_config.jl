@@ -9,10 +9,11 @@
 #
 # Por defecto: config/specs/ejemplo_leo.json -> config/generated/ejemplo_leo.json
 #
-# Es ligero a propósito: solo carga Types, Constants, Transformations y Scenario
-# (no GLMakie ni DifferentialEquations). Scenario hace `using ..Constants` y
-# `using ..Transformations`, que aquí resuelven a Main.Constants y Main.Transformations.
-# Transformations aporta theta0_from_utc, la misma rotación terrestre que usa el simulador.
+# Es ligero a propósito: solo carga Types, Constants, Transformations, Attitude y Scenario
+# (no GLMakie ni DifferentialEquations). Scenario hace `using ..Constants`,
+# `using ..Transformations` y `using ..Attitude`, que aquí resuelven a los módulos de Main.
+# Transformations aporta theta0_from_utc, la misma rotación terrestre que usa el simulador,
+# y Attitude valida los bloques "attitude" con el mismo código que el simulador.
 #
 # Funciones: run_generator
 # =============================================================================
@@ -24,6 +25,7 @@ const ROOT = normpath(joinpath(@__DIR__, ".."))
 isdefined(Main, :Types)           || include(joinpath(ROOT, "src", "Types.jl"))
 isdefined(Main, :Constants)       || include(joinpath(ROOT, "src", "Constants.jl"))
 isdefined(Main, :Transformations) || include(joinpath(ROOT, "src", "Transformations.jl"))
+isdefined(Main, :Attitude)        || include(joinpath(ROOT, "src", "Attitude", "Attitude.jl"))
 include(joinpath(ROOT, "src", "Scenario", "Scenario.jl"))
 
 """
@@ -70,4 +72,4 @@ end
 # Solo se ejecuta al lanzar el script directamente, no al hacer include desde el REPL
 if abspath(PROGRAM_FILE) == abspath(@__FILE__)
     run_generator()
-end
+end

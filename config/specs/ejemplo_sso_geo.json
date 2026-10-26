@@ -9,11 +9,11 @@
   "objectives": {
     "deb_sso": {
       "orbit": {"type": "SSO", "altitude_km": 700, "ltan": "10:30", "TA": 1.0},
-      "w_deg_s": 0
+      "attitude": {"type": "spin", "w_deg_s": 0}
     },
     "sat_geo": {
       "orbit": {"type": "GEO", "longitude_deg": 0.0},
-      "w_deg_s": 0
+      "attitude": {"type": "spin", "w_deg_s": 0}
     }
   },
 

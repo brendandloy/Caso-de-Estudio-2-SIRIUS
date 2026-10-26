@@ -6,6 +6,7 @@ export eclipseEarthECI, losECI, sunGlareConeECI
 using ..Types
 using ..Transformations
 using ..Constants
+using ..Attitude: AttitudeSpec, parse_member_attitude    # lectura del bloque "attitude" de cada objetivo
 
 using StaticArrays
 using SPICE
@@ -32,25 +33,37 @@ function load_kernels(kernel_dir::AbstractString)
 end
 
 
-function parse_arguments(args = ARGS)
+"""
+    parse_arguments(args=ARGS) -> NamedTuple
 
-    default_config = joinpath(@__DIR__, "..", "config", "config.json")
+Lee los argumentos de `scripts/main.jl`: la spec es obligatoria y la carpeta de
+resultados, opcional.
+
+# Argumentos
+- `args`: `[spec.json]` o `[spec.json, output_path]`.
+
+# Devuelve
+- `(spec_path, output_path)` como rutas absolutas; sin `output_path`, la carpeta `output/`.
+
+# Excepciones
+- `ErrorException`: si no hay argumentos o hay más de dos (el mensaje indica el uso).
+
+# Ejemplo
+```julia
+parse_arguments(["config/specs/ejemplo_leo.json"])     # output_path = <repo>/output
+```
+"""
+function parse_arguments(args = ARGS)
     default_output = joinpath(@__DIR__, "..", "output")
 
-    if isempty(args)
-        return (
-            config_path = default_config,
-            output_path = default_output
-        )
-    end
-
-    length(args) == 2 || error(
-        "Usage: julia main.jl [<config_path> <output_path>]"
+    # La spec es obligatoria: así siempre queda claro qué escenario se simula
+    1 <= length(args) <= 2 || error(
+        "Usage: julia --project=. scripts/main.jl <spec.json> [<output_path>]"
     )
 
     return (
-        config_path = abspath(args[1]),
-        output_path = abspath(args[2])
+        spec_path   = abspath(args[1]),
+        output_path = length(args) == 2 ? abspath(args[2]) : normpath(default_output)
     )
 end
 
@@ -91,14 +104,15 @@ function load_config(path::AbstractString)
     obs_dir = Dict{Symbol, SVector{3,Float64}}()
     obs_pos_sigma = Dict{Symbol, SVector{3,Float64}}()
     obs_vel_sigma = Dict{Symbol, SVector{3,Float64}}()
-    obj_w = Dict{Symbol, Tuple{Float64,SVector{3,Float64}}}()
+    obj_attitude = Dict{Symbol, AttitudeSpec}()     # actitud de cada objetivo (modo + parámetros)
     obs_keys = Symbol[]
     obj_keys = Symbol[]
 
     for (name, dict) in cfg.objectives
         key = Symbol("obj_$name")
         objects[key] = kepler_to_cartesian(dict)
-        obj_w[key] = (deg2rad(Float64(dict.w_deg_s)),SVector{3,Float64}(dict.w_dir))
+        # Bloque "attitude" obligatorio; las claves antiguas w_deg_s/w_dir dan error con la conversión
+        obj_attitude[key] = parse_member_attitude(dict, String(name))
         push!(obj_keys, key)
     end
 
@@ -145,7 +159,7 @@ function load_config(path::AbstractString)
         obs_vel_sigma          = obs_vel_sigma,
         obs_keys               = obs_keys,  
         obj_keys               = obj_keys,
-        obj_w                  = obj_w,
+        obj_attitude           = obj_attitude,
         stations_llh           = stations_llh
     )
 end
