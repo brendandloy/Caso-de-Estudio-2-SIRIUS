@@ -1,0 +1,60 @@
+{
+  "seed": 1234,
+
+  "scenario": {
+    "init_epoch": "2000-01-01T11:59:28",
+    "Duration_hours": 0.2,
+    "Data_time_step_seconds": 2,
+
+    "navigation_error_flag": true,
+    "graphic_display_flag": false,
+    "image_generation_flag": false,
+    "ignore_fov_for_measurements_flag": false,
+    "star_csv_flag": false,
+
+    "camera_config": {
+      "Vmag_lim": 10.0,
+      "fov_deg": 27,
+      "resolution_x": 1024,
+      "resolution_y": 1024,
+      "mag0": 8.0,
+      "flux0": 20000.0,
+      "fwhm_deg": 0.0659,
+      "background_level": 500,
+      "sigma_read_noise": 100.0,
+      "upper_percentile": 99.9,
+      "lower_percentage": 0.0,
+      "los_sigma_arcsec": 42.43
+    },
+
+    "photometry_config": {
+      "phi_sun": 455.0,
+      "glare_angle_deg": 15.0,
+      "Vref_phong": -10.0,
+      "Fref_phong": 0.000001
+    },
+
+    "stations_llh": {}
+  },
+
+  "member_fields": {
+    "position_sigma_km": [0.015, 0.015, 0.015],
+    "velocity_sigma_km_s": [0.00002, 0.00002, 0.00002]
+  },
+
+  "objectives": {
+    "deb": {
+      "pattern": "single",
+      "orbit": {"type": "keplerian", "SMA": 8800.0, "ECC": 0.2, "INC": 90, "RAAN": 10, "AOP": 0.0, "TA": 357.5},
+      "attitude": {"type": "spin", "w_deg_s": 0}
+    }
+  },
+
+  "observers": {
+    "cam1": {
+      "pattern": "single",
+      "orbit": {"type": "LEO", "altitude_km": 621.86, "INC": 90, "RAAN": 0, "TA": 0},
+      "pointing": {"type": "fixed", "dir": [0.0, 1.0, 0.0]}
+    }
+  }
+}

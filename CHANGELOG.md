@@ -4,6 +4,18 @@ Cambios relevantes de SIRIUS en el Caso de Estudio 2. Formato basado en [Keep a 
 
 ## [Sin publicar]
 
+### 2026-10-27
+#### Añadido
+- `config/specs/plantilla.json`: spec con todas las opciones del escenario (`scenario`, `member_fields`, `seed`) y su valor por defecto, para copiarla al crear un escenario nuevo.
+- El generador rechaza claves desconocidas en la spec, en `scenario` (incluidos `camera_config` y `photometry_config`), en el `template` y en `member_fields`.
+
+#### Cambiado
+- `debris_positions.csv` se escribe siempre, aunque no se generen imágenes; `image_generation_flag` solo controla los PNG.
+- README: tabla con las tres formas de ejecutar la simulación y aviso de que el REPL abierto no recoge cambios en `src/`.
+
+#### Eliminado
+- Comprobación específica de `w_deg_s`/`w_dir` en `member_fields` (la cubre la comprobación general de claves).
+
 ### 2026-10-26
 #### Añadido
 - Módulo `Attitude` (`src/Attitude/`): actitud de los objetivos con cuatro modos, `spin` (ω constante), `random` (orientación, eje y |ω| aleatorios con semilla), `fixed` (orientación constante respecto a ECI o LVLH) y `pointing` (eje primario y secundario hacia nadir, Sol, velocidad, normal orbital o un vector ECI; método TRIAD). Orientaciones como cuaternión o ángulos de Euler, con las convenciones del tema T6.
@@ -21,6 +33,7 @@ Cambios relevantes de SIRIUS en el Caso de Estudio 2. Formato basado en [Keep a 
 
 #### Corregido
 - El eje de giro `w_dir` se normaliza; antes un eje no unitario (p. ej. `[1, 1, 0]`) daba una rotación incorrecta.
+- `load_config` lee el JSON en memoria en vez de mapearlo (mmap). En Windows, el mapeo impedía sobrescribir el JSON de `config/generated/` mientras siguiera abierta la sesión de Julia que lo había leído (error `Invalid argument`).
 
 #### Eliminado
 - `Propagator.propagate_attitude`, sustituido por `Attitude.compute_attitude`.

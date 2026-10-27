@@ -20,7 +20,7 @@ end
 
 # Spec a simular y carpeta de resultados (rutas desde la raíz del repositorio)
 spec   = joinpath(@__DIR__, "..", "config", "specs", "ejemplo_leo.json")
-output = joinpath(@__DIR__, "..", "output")
+output = joinpath(@__DIR__, "..", "output", "test_leo")
 
 # main.jl solo se carga la primera vez en la sesión
 if !isdefined(Main, :run_spec)

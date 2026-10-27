@@ -561,7 +561,9 @@ function camera_sim!(data::Dict{Symbol,TrajectoryData}, los_measurements::Dict{S
                 err_meas!(los_measurements[obs_name], debris_meas, obs_traj.t[i], config.los_sigma_arcsec, config.navigation_error_flag)
             end
 
-            if config.image_generation_flag && nrow(debris_fov) > 0
+            # Posiciones en píxeles de los RSOs en el FOV: se registran siempre (debris_positions.csv);
+            # image_name identifica el instante aunque no se guarde el PNG
+            if nrow(debris_fov) > 0
 
                 render_debris = prepare_render_dict(debris_fov, dir, fov, nx, ny;
                     mag0 = config.mag0, flux0 = config.flux0)
@@ -577,6 +579,7 @@ function camera_sim!(data::Dict{Symbol,TrajectoryData}, los_measurements::Dict{S
                     ))
                 end
 
+                # Solo se pintan en la imagen si se generan los PNG
                 if config.image_generation_flag
                     render_psf_gaussian!(img, render_debris, fov, config.fwhm_deg)
                 end
@@ -590,9 +593,8 @@ function camera_sim!(data::Dict{Symbol,TrajectoryData}, los_measurements::Dict{S
         end
 
     end
-    if config.image_generation_flag
-        CSV.write(joinpath(outdir, "debris_positions.csv"), debris_log; delim=';')
-    end
+    # Se escribe siempre (aunque no haya PNG): indica qué RSOs vio la cámara, cuándo y dónde
+    CSV.write(joinpath(outdir, "debris_positions.csv"), debris_log; delim=';')
     return nothing
     
 end

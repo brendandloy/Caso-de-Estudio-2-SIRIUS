@@ -70,7 +70,9 @@ end
 
 function load_config(path::AbstractString)
 
-    cfg = JSON3.read(path)
+    # Se lee el texto en memoria: JSON3.read(path) mapea el archivo (mmap) y, mientras la sesión
+    # de Julia siga abierta, Windows no deja sobrescribirlo (p. ej. al regenerar la spec)
+    cfg = JSON3.read(read(path, String))
 
     # --- Tiempo ---
     Duration_hours         = cfg.Duration_hours

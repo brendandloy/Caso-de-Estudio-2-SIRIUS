@@ -6,13 +6,18 @@
 # (ve getreq, getopt, lookup, los registros, etc.).
 #
 # Constantes:
-#   ELEMENT_KEYS, DEFAULT_TEMPLATE, DEFAULT_MEMBER_FIELDS, KEY_ORDER, KEY_PRIORITY
+#   ELEMENT_KEYS, DEFAULT_TEMPLATE, DEFAULT_MEMBER_FIELDS, SPEC_KEYS, FREE_KEY_BLOCKS,
+#   KEY_ORDER, KEY_PRIORITY
+#
+# Si se añade o cambia un valor de DEFAULT_TEMPLATE o DEFAULT_MEMBER_FIELDS, hay que
+# actualizar también config/specs/plantilla.json, que los lista todos.
 #
 # Funciones:
 #   read_json, deep_merge!          : lectura de JSON y fusión recursiva de diccionarios
 #   sortkey, write_scalar,
 #   write_value, write_config       : escritura del JSON con orden de claves estable
 #   validate_elements               : comprobaciones físicas de cada miembro
+#   check_known_keys                : rechaza claves desconocidas en scenario / member_fields
 #   resolve_pointing                : obtiene obs_dir con el plugin de apuntado
 #   resolve_attitude                : bloque "attitude" de cada objetivo (validado con el módulo Attitude)
 #   build_section                  : construye objectives u observers
@@ -69,8 +74,11 @@ const DEFAULT_MEMBER_FIELDS = Dict{String,Any}(
     "velocity_sigma_km_s" => [0.00002, 0.00002, 0.00002]
 )
 
-# Claves de "member_fields" que ya no se usan (la actitud va en el bloque "attitude" de cada grupo)
-const REMOVED_MEMBER_FIELDS = ("w_deg_s", "w_dir")
+# Claves admitidas en el nivel superior de una spec
+const SPEC_KEYS = ("template", "seed", "scenario", "member_fields", "objectives", "observers")
+
+# Bloques de DEFAULT_TEMPLATE cuyas claves son nombres libres (no se comprueban)
+const FREE_KEY_BLOCKS = ("stations_llh",)
 
 # -----------------------------------------------------------------------------
 # JSON: lectura, fusión y escritura (con orden de claves estable)
@@ -507,6 +515,46 @@ function build_section(groups::AbstractDict, ctx, role::Symbol)
 end
 
 """
+    check_known_keys(block, ref, who)
+
+Comprueba, de forma recursiva, que todas las claves de `block` existen en el
+diccionario de referencia `ref` (p. ej. `DEFAULT_TEMPLATE`).
+
+Por qué existe: una errata en `scenario` o `member_fields` (p. ej.
+`"image_generation_flg"`) se copiaría al JSON sin efecto y el simulador usaría
+el valor por defecto sin avisar. La lista de claves válidas está en
+`config/specs/plantilla.json`.
+
+# Argumentos
+- `block::AbstractDict`: bloque a comprobar.
+- `ref::AbstractDict`: bloque de referencia con todas las claves admitidas.
+- `who::AbstractString`: nombre del bloque, para los mensajes de error.
+
+# Devuelve
+- `nothing`.
+
+# Excepciones
+- `ErrorException`: si aparece una clave que no está en `ref` (el mensaje lista las admitidas).
+
+# Ejemplo
+```julia
+check_known_keys(Dict("image_generation_flg" => true), DEFAULT_TEMPLATE, "scenario")
+# error: 'scenario': unknown parameter 'image_generation_flg'. Allowed: ...
+```
+"""
+function check_known_keys(block::AbstractDict, ref::AbstractDict, who::AbstractString)
+    check_keys(block, keys(ref); who = who)
+
+    # Se baja a los sub-bloques (camera_config, photometry_config...), salvo los de nombres libres
+    for (k, v) in block
+        kk = String(k)
+        (v isa AbstractDict && ref[kk] isa AbstractDict && !(kk in FREE_KEY_BLOCKS)) || continue
+        check_known_keys(v, ref[kk], "$who.$kk")
+    end
+    return nothing
+end
+
+"""
     generate_config(spec; spec_dir=pwd()) -> Dict{String,Any}
 
 Convierte una spec en el diccionario completo de escenario. Mezcla los
@@ -521,6 +569,7 @@ y construye `objectives` y `observers`.
 - `Dict{String,Any}` con el escenario completo, en el esquema de Environment.load_config.
 
 # Excepciones
+- `ErrorException`: si la spec, `scenario`, el `template` o `member_fields` tienen una clave desconocida.
 - `ErrorException`: si el `template` no existe o no se puede leer.
 - `ErrorException`: si la spec no tiene al menos un objetivo y un observador.
 - `ErrorException`: cualquiera de los errores de `build_section` y de los plugins.
@@ -533,6 +582,8 @@ cfg["observers"]["cam1"]["INC"]        # ≈ 98.19 (SSO a 700 km)
 ```
 """
 function generate_config(spec::AbstractDict; spec_dir::AbstractString = pwd())
+    check_keys(spec, SPEC_KEYS; who = "spec")             # p. ej. "scenarios" por "scenario"
+
     cfg = deepcopy(DEFAULT_TEMPLATE)                      # valores de fábrica del escenario
     member_fields = deepcopy(DEFAULT_MEMBER_FIELDS)       # valores de fábrica de cada miembro
 
@@ -548,10 +599,9 @@ function generate_config(spec::AbstractDict; spec_dir::AbstractString = pwd())
     haskey(spec, "scenario") && deep_merge!(cfg, spec["scenario"])
     haskey(spec, "member_fields") && deep_merge!(member_fields, spec["member_fields"])
 
-    # w_deg_s/w_dir en member_fields se ignorarían en silencio: la actitud va en cada grupo
-    for k in REMOVED_MEMBER_FIELDS
-        haskey(member_fields, k) && error("'member_fields' no longer accepts '$k': define the attitude in each objective group.")
-    end
+    # Erratas en el template, en "scenario" o en "member_fields" darían valores por defecto sin avisar
+    check_known_keys(cfg, DEFAULT_TEMPLATE, "scenario")
+    check_known_keys(member_fields, DEFAULT_MEMBER_FIELDS, "member_fields")
 
     # Semilla de los números aleatorios: la de la spec o una nueva, que se imprime para poder repetir
     if haskey(spec, "seed")

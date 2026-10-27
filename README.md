@@ -41,15 +41,21 @@ El catálogo reducido se genera a partir del Hipparcos completo con `scripts/red
 
 ## Uso rápido
 
-El escenario se escribe a mano como una *spec* corta en `config/specs/` y se simula con un solo comando:
+El escenario se escribe a mano como una *spec* corta en `config/specs/`. `main.jl` genera primero el JSON completo en `config/generated/<nombre de la spec>.json` (lo sobrescribe si existe) y después lanza la simulación con él. La spec es obligatoria; la carpeta de resultados es opcional (por defecto, `output/`). El JSON generado guarda las semillas usadas, así que una ejecución con elementos aleatorios se puede repetir.
 
-```bash
-julia --project=. scripts/main.jl config/specs/ejemplo_leo.json [output/]
-```
+Hay tres formas de ejecutarlo (desde la raíz del repositorio):
 
-`main.jl` genera primero el JSON completo en `config/generated/ejemplo_leo.json` (lo sobrescribe si existe) y después lanza la simulación con él. La spec es obligatoria; la carpeta de resultados es opcional (por defecto, `output/`). Desde VS Code se ejecuta `scripts/run_simulation_vscode.jl` (botón ▷ o *Julia: Execute active File in REPL*), cambiando en él la variable `spec`; el script activa el entorno del repositorio. La primera ejecución tarda varios minutos porque Julia precompila las dependencias.
+| Forma | Cómo | Velocidad |
+|---|---|---|
+| Terminal | `julia --project=. scripts/main.jl config/specs/ejemplo_leo.json [output/]` | Cada ejecución arranca un Julia nuevo y vuelve a cargar todos los paquetes |
+| Lanzador de VS Code | Cambiar la variable `spec` de `scripts/run_simulation_vscode.jl` y ejecutarlo con *Julia: Execute active File in REPL* (activa solo el entorno del repositorio) | La primera vez carga todo; las siguientes, en la misma sesión, van directas a la simulación |
+| REPL a mano | `include("scripts/main.jl")` una vez y después `run_spec("config/specs/ejemplo_leo.json", "output/test_leo")` | Igual que el lanzador |
 
-El JSON generado guarda las semillas usadas, así que una ejecución con elementos aleatorios se puede repetir. Para simular directamente un JSON completo (lo hace `MonteCarlo.jl`): `include("scripts/main.jl"); run_simulation("config/generated/ejemplo_leo.json", "output")`. Para generar el JSON sin simular: `julia --project=. scripts/generate_config.jl <spec.json>`.
+Para varias ejecuciones seguidas conviene el REPL (lanzador o `run_spec`); para una ejecución suelta, la terminal.
+
+> **Aviso:** una sesión de REPL abierta sigue usando el código de `src/` que cargó al principio. Si se modifica algún archivo de `src/`, hay que cerrar el REPL (`exit()` o la papelera del terminal de Julia) y abrir uno nuevo; si no, se ejecuta el código antiguo.
+
+La primera ejecución tras clonar el repositorio o cambiar `src/` tarda más porque Julia precompila (`julia --project=. -e "import Pkg; Pkg.precompile()"` lo hace por adelantado). Otros usos: simular directamente un JSON completo (lo hace `MonteCarlo.jl`) con `include("scripts/main.jl"); run_simulation("config/generated/ejemplo_leo.json", "output")`, y generar el JSON sin simular con `julia --project=. scripts/generate_config.jl <spec.json>`.
 
 Ejemplo de *spec* (observador en LEO polar, objetivo en órbita kepleriana):
 
@@ -65,11 +71,21 @@ Ejemplo de *spec* (observador en LEO polar, objetivo en órbita kepleriana):
 
 Hay más ejemplos en `config/specs/` (SSO + GEO, formaciones, CW, Walker, TLE, órbitas aleatorias y modos de actitud en `ejemplo_actitud.json`).
 
+### Crear una spec nueva: `config/specs/plantilla.json`
+
+La plantilla contiene **todas** las opciones que admite una spec, escritas con su valor por defecto: el bloque `scenario` completo (tiempos, *flags*, `camera_config`, `photometry_config`, `stations_llh`), el bloque `member_fields` (errores de navegación de las cámaras), la `seed` y un objetivo y un observador de ejemplo. Para un escenario nuevo:
+
+1. Copiar `plantilla.json` en `config/specs/` con otro nombre.
+2. Cambiar solo lo necesario. Por ejemplo, para guardar las imágenes: `"image_generation_flag": true` (conviene subir `Data_time_step_seconds`, porque se genera un PNG por paso y por cámara).
+3. Las claves que no se cambien pueden borrarse: el generador usa el mismo valor por defecto.
+
+Una clave mal escrita en la spec, en `scenario` o en `member_fields` (p. ej. `"image_generation_flg"`) da un error que lista las claves admitidas. Sin `seed`, cada ejecución sortea una nueva y la imprime.
+
 ## Estructura del repositorio
 
 ```
 ├── config/
-│   ├── specs/         # Specs cortas de escenario (entrada del generador)
+│   ├── specs/         # Specs de escenario escritas a mano; plantilla.json lista todas las opciones
 │   ├── generated/     # Configuraciones completas generadas a partir de las specs
 │   ├── tle/           # Archivos TLE de ejemplo
 │   └── *.json         # Configuraciones heredadas (escritas a mano), Kalman y Monte Carlo
@@ -113,7 +129,7 @@ Hay más ejemplos en `config/specs/` (SSO + GEO, formaciones, CW, Walker, TLE, �
 
 ### Generador de escenarios (`Scenario`)
 
-Convierte una *spec* corta en el JSON completo que lee `Environment.load_config`. Se basa en cuatro tipos de *plugin*, cada uno en su carpeta:
+Convierte una *spec* corta en el JSON completo que lee `Environment.load_config`. Los valores que la spec no indica se toman de `DEFAULT_TEMPLATE` y `DEFAULT_MEMBER_FIELDS` (`Builder.jl`), los mismos que lista `config/specs/plantilla.json`. Se basa en cuatro tipos de *plugin*, cada uno en su carpeta:
 
 | Tipo | Qué define | Tipos disponibles |
 |---|---|---|
@@ -150,7 +166,7 @@ La orientación se da como cuaternión `q` o como `euler_deg` + `sequence`. Para
 - **Entorno:** dirección del Sol con SPICE (DE440s), eclipses por la Tierra, línea de visión y cono de deslumbramiento solar.
 - **Geometría de los objetos:** cuerpos triangulados (prismas, esferas, placas, cilindros, conos, troncos y fragmentos) con paneles opcionales y coeficientes ópticos aleatorios.
 - **Fotometría:** modelo de Phong por facetas (componentes difusa y especular) para obtener la magnitud aparente V.
-- **Cámara:** catálogo Hipparcos dentro del campo de visión, PSF gaussiana, fondo, ruido Poisson, ruido de lectura y *bias*. Las medidas LOS se exportan con error.
+- **Cámara:** catálogo Hipparcos dentro del campo de visión, PSF gaussiana, fondo, ruido Poisson, ruido de lectura y *bias*. Las medidas LOS se exportan con error. Por cada observador se escriben siempre `los_measurements.csv`, `state_measurements.csv` y `debris_positions.csv` (RSOs en el campo de visión con su posición en píxeles y su magnitud V en cada instante); los PNG solo con `image_generation_flag = true`.
 - **Escenarios:**
   - Órbitas SSO con inclinación calculada por J2 y RAAN a partir de la LTAN.
   - Formaciones con condiciones iniciales de Clohessy-Wiltshire, válidas para un *chief* casi circular (e < 0.01) y separaciones ≪ SMA. Después se propagan con la dinámica completa.
