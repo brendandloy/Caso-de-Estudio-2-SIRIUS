@@ -43,19 +43,18 @@ resultados, opcional.
 - `args`: `[spec.json]` o `[spec.json, output_path]`.
 
 # Devuelve
-- `(spec_path, output_path)` como rutas absolutas; sin `output_path`, la carpeta `output/`.
+- `(spec_path, output_path)`: rutas absolutas; sin `output_path`, `nothing` (main.jl usa entonces
+  `output/<nombre de la spec>/`).
 
 # Excepciones
 - `ErrorException`: si no hay argumentos o hay más de dos (el mensaje indica el uso).
 
 # Ejemplo
 ```julia
-parse_arguments(["config/specs/ejemplo_leo.json"])     # output_path = <repo>/output
+parse_arguments(["config/specs/ejemplo_leo.json"])     # output_path = nothing -> output/ejemplo_leo/
 ```
 """
 function parse_arguments(args = ARGS)
-    default_output = joinpath(@__DIR__, "..", "output")
-
     # La spec es obligatoria: así siempre queda claro qué escenario se simula
     1 <= length(args) <= 2 || error(
         "Usage: julia --project=. scripts/main.jl <spec.json> [<output_path>]"
@@ -63,7 +62,7 @@ function parse_arguments(args = ARGS)
 
     return (
         spec_path   = abspath(args[1]),
-        output_path = length(args) == 2 ? abspath(args[2]) : normpath(default_output)
+        output_path = length(args) == 2 ? abspath(args[2]) : nothing
     )
 end
 
@@ -602,4 +601,4 @@ function export_data_csvs!(data, los_meas, env; output_root=joinpath(@__DIR__, "
 end
 
 
-end # module
+end # module

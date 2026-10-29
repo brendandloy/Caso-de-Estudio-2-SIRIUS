@@ -41,15 +41,15 @@ El catálogo reducido se genera a partir del Hipparcos completo con `scripts/red
 
 ## Uso rápido
 
-El escenario se escribe a mano como una *spec* corta en `config/specs/`. `main.jl` genera primero el JSON completo en `config/generated/<nombre de la spec>.json` (lo sobrescribe si existe) y después lanza la simulación con él. La spec es obligatoria; la carpeta de resultados es opcional (por defecto, `output/`). El JSON generado guarda las semillas usadas, así que una ejecución con elementos aleatorios se puede repetir.
+El escenario se escribe a mano como una *spec* corta en `config/specs/`. `main.jl` genera primero el JSON completo en `config/generated/<nombre de la spec>.json` (lo sobrescribe si existe) y después lanza la simulación con él. La spec es obligatoria; la carpeta de resultados es opcional (por defecto, `output/<nombre de la spec>/`, p. ej. `output/ejemplo_leo/`, para no mezclar resultados de escenarios distintos). El JSON generado guarda las semillas usadas, así que una ejecución con elementos aleatorios se puede repetir.
 
 Hay tres formas de ejecutarlo (desde la raíz del repositorio):
 
 | Forma | Cómo | Velocidad |
 |---|---|---|
-| Terminal | `julia --project=. scripts/main.jl config/specs/ejemplo_leo.json [output/]` | Cada ejecución arranca un Julia nuevo y vuelve a cargar todos los paquetes |
-| Lanzador de VS Code | Cambiar la variable `spec` de `scripts/run_simulation_vscode.jl` y ejecutarlo con *Julia: Execute active File in REPL* (activa solo el entorno del repositorio) | La primera vez carga todo; las siguientes, en la misma sesión, van directas a la simulación |
-| REPL a mano | `include("scripts/main.jl")` una vez y después `run_spec("config/specs/ejemplo_leo.json", "output/test_leo")` | Igual que el lanzador |
+| Terminal | `julia --project=. scripts/main.jl config/specs/ejemplo_leo.json [carpeta_resultados]` | Cada ejecución arranca un Julia nuevo y vuelve a cargar todos los paquetes |
+| Lanzador de VS Code | Cambiar la variable `spec` (y, si se quiere, `output`) de `scripts/run_simulation_vscode.jl` y ejecutarlo con *Julia: Execute active File in REPL* (activa solo el entorno del repositorio) | La primera vez carga todo; las siguientes, en la misma sesión, van directas a la simulación |
+| REPL a mano | `include("scripts/main.jl")` una vez y después `run_spec("config/specs/ejemplo_leo.json")` (o con una carpeta como segundo argumento) | Igual que el lanzador |
 
 Para varias ejecuciones seguidas conviene el REPL (lanzador o `run_spec`); para una ejecución suelta, la terminal.
 
@@ -92,7 +92,8 @@ Una clave mal escrita en la spec, en `scenario` o en `member_fields` (p. ej. `"i
 ├── data/              # Kernels SPICE y catálogo Hipparcos
 ├── output/            # Resultados de simulación (ignorado por git)
 ├── test/
-│   └── test_attitude.jl            # Pruebas del módulo Attitude (convenciones del T6 y modos)
+│   ├── test_attitude.jl            # Pruebas del módulo Attitude (convenciones del T6 y modos)
+│   └── test_geometry.jl            # Pruebas de las mallas de Geometry.jl (áreas, L_c, normales)
 ├── scripts/
 │   ├── main.jl                     # Spec → JSON completo → simulación (propagación → actitud → fotometría → cámara → CSV)
 │   ├── generate_config.jl          # Spec → JSON de escenario
@@ -164,7 +165,7 @@ La orientación se da como cuaternión `q` o como `euler_deg` + `sequence`. Para
   - LVLH (igual que en `Relative_utils.jl`): x radial, z normal al plano orbital (r × v), y = z × x.
   - `pointing`: método TRIAD con r, v (ECI) y la dirección del Sol (geocéntrica, SPICE). Error si las dos direcciones son paralelas en algún instante.
 - **Entorno:** dirección del Sol con SPICE (DE440s), eclipses por la Tierra, línea de visión y cono de deslumbramiento solar.
-- **Geometría de los objetos:** cuerpos triangulados (prismas, esferas, placas, cilindros, conos, troncos y fragmentos) con paneles opcionales y coeficientes ópticos aleatorios.
+- **Geometría de los objetos:** cuerpos triangulados (prismas, esferas, placas, cilindros, conos, troncos y fragmentos) con paneles opcionales y coeficientes ópticos aleatorios. Las dimensiones aleatorias siguen normales truncadas a valores positivos. Conos y troncos: solo superficie lateral exterior, sin bases ([PENDIENTE] confirmar si deben cerrarse). Fragmentos: envolvente convexa de puntos aleatorios escalada a la longitud característica del NASA Standard Breakup Model, L_c = (X + Y + Z)/3 (dimensiones en los ejes principales). Los paneles no tienen geometría propia: solo modifican los coeficientes ópticos medios.
 - **Fotometría:** modelo de Phong por facetas (componentes difusa y especular) para obtener la magnitud aparente V.
 - **Cámara:** catálogo Hipparcos dentro del campo de visión, PSF gaussiana, fondo, ruido Poisson, ruido de lectura y *bias*. Las medidas LOS se exportan con error. Por cada observador se escriben siempre `los_measurements.csv`, `state_measurements.csv` y `debris_positions.csv` (RSOs en el campo de visión con su posición en píxeles y su magnitud V en cada instante); los PNG solo con `image_generation_flag = true`.
 - **Escenarios:**
@@ -176,6 +177,7 @@ La orientación se da como cuaternión `q` o como `euler_deg` + `sequence`. Para
 ## Validación y resultados
 
 - `test/test_attitude.jl` (41 comprobaciones superadas con Julia 1.13.2): matrices de Euler 3-2-1 y 3-1-3 y cuaternión frente a las expresiones del T6; el modo `spin` reproduce el antiguo `propagate_attitude` (diferencia < 1e-10) y cumple `dC_ib/dt = C_ib [ω×]`; media de las DCM aleatorias ≈ 0 (orientación uniforme); `fixed` en LVLH y `pointing` alinean los ejes pedidos. Se ejecuta con `julia --project=. test/test_attitude.jl`.
+- `test/test_geometry.jl` (190 comprobaciones superadas con Julia 1.13.2): área de la esfera ≈ 4πr² (−1,2 % por ser un poliedro inscrito), área lateral del cono y del tronco frente a la analítica (< 1 %), L_c del fragmento igual a la pedida, ausencia de normales NaN y de dimensiones negativas en 24 000 sorteos, y generación de las 7 formas en todas las categorías. Se ejecuta con `julia --project=. test/test_geometry.jl`.
 - Resto de la herramienta: [PENDIENTE]
 
 ## Créditos

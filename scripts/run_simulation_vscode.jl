@@ -18,9 +18,12 @@ if Base.active_project() != joinpath(repo_root, "Project.toml")
     Pkg.activate(repo_root; io = devnull)
 end
 
-# Spec a simular y carpeta de resultados (rutas desde la raíz del repositorio)
+# Spec a simular (ruta desde la raíz del repositorio)
 spec   = joinpath(@__DIR__, "..", "config", "specs", "ejemplo_leo.json")
-output = joinpath(@__DIR__, "..", "output", "test_leo")
+
+# Carpeta de resultados: con nothing, output/<nombre de la spec>/ (p. ej. output/ejemplo_leo/)
+#output = joinpath(@__DIR__, "..", "output", "mi_prueba")
+output = nothing
 
 # main.jl solo se carga la primera vez en la sesión
 if !isdefined(Main, :run_spec)

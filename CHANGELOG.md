@@ -4,6 +4,20 @@ Cambios relevantes de SIRIUS en el Caso de Estudio 2. Formato basado en [Keep a 
 
 ## [Sin publicar]
 
+### 2026-10-29
+#### Añadido
+- Pruebas `test/test_geometry.jl`.
+
+#### Cambiado
+- Carpeta de resultados por defecto de `main.jl`/`run_spec`: `output/<nombre de la spec>/` en lugar de `output/`. En `run_simulation_vscode.jl`, `output = nothing` usa esa carpeta.
+
+#### Corregido
+- Fragmento irregular (forma 7): daba error siempre, porque llamaba a una función `qhull` que QHull.jl no exporta; ahora usa `chull`. Además, la longitud característica se usaba como si fuera un volumen (un fragmento de 0.1 m salía con ≈ 29 m de radio); ahora la malla se escala para que L_c = (X + Y + Z)/3 sea la pedida.
+- Conos y troncos con el área duplicada: las caras interiores repetían las exteriores. Ahora son ≈ 0.75 mag más débiles, el valor correcto para su tamaño.
+- Dimensiones aleatorias negativas en prismas, conos y troncos (≈ 2 % de los conos pequeños): ahora se sortean de una normal truncada a valores positivos.
+- Esfera: los polos ya no se representan con anillos de puntos casi coincidentes, sino con un vértice y un abanico de triángulos.
+- `calculateNormals` descarta, con un aviso, los triángulos degenerados (área nula) en lugar de devolver normales NaN.
+
 ### 2026-10-27
 #### Añadido
 - `config/specs/plantilla.json`: spec con todas las opciones del escenario (`scenario`, `member_fields`, `seed`) y su valor por defecto, para copiarla al crear un escenario nuevo.

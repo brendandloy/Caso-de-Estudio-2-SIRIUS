@@ -11,7 +11,7 @@
 #   1. Genera el JSON completo del escenario en config/generated/<nombre de la spec>.json
 #      (si ya existe, se sobrescribe; guarda las semillas usadas, así que se puede repetir).
 #   2. Simula con ese JSON: propagación -> actitud -> fotometría -> cámara -> CSV.
-# Sin <output_path>, los resultados se escriben en output/.
+# Sin <output_path>, los resultados se escriben en output/<nombre de la spec>/.
 #
 # Funciones:
 #   run_spec       : spec -> JSON completo -> simulación (punto de entrada)
@@ -113,7 +113,7 @@ Ejecuta la simulación completa a partir de una spec: genera el JSON completo en
 
 # Argumentos
 - `spec_path::AbstractString`: spec escrita a mano (normalmente en `config/specs/`).
-- `output_path::AbstractString`: carpeta de resultados (por defecto `output/`).
+- `output_path`: carpeta de resultados; con `nothing` (por defecto), `output/<nombre de la spec>/`.
 
 # Devuelve
 - `nothing`.
@@ -129,8 +129,12 @@ include("scripts/main.jl")
 run_spec("config/specs/ejemplo_actitud.json")
 ```
 """
-function run_spec(spec_path::AbstractString, output_path::AbstractString = joinpath(@__DIR__, "..", "output"))
+function run_spec(spec_path::AbstractString, output_path::Union{AbstractString,Nothing} = nothing)
     spec_path = abspath(spec_path)
+    name = splitext(basename(spec_path))[1]                # nombre de la spec, sin .json
+
+    # Sin carpeta indicada: una por escenario, para no mezclar resultados de specs distintas
+    output_path === nothing && (output_path = joinpath(@__DIR__, "..", "output", name))
 
     # Un JSON completo tiene los elementos (SMA...) en cada objetivo; una spec tiene "orbit"/"pattern"
     spec = Scenario.read_json(spec_path)
@@ -140,11 +144,11 @@ function run_spec(spec_path::AbstractString, output_path::AbstractString = joinp
         "(or call run_simulation(path, output_path) to simulate a full JSON).")
 
     # 1. Spec -> JSON completo en config/generated/ (mismo nombre que la spec)
-    cfg_path = normpath(joinpath(@__DIR__, "..", "config", "generated", splitext(basename(spec_path))[1] * ".json"))
+    cfg_path = normpath(joinpath(@__DIR__, "..", "config", "generated", name * ".json"))
     generate_config_file(spec_path, cfg_path)
 
     # 2. Simulación con el JSON generado
-    run_simulation(cfg_path, abspath(output_path))
+    run_simulation(cfg_path, normpath(abspath(output_path)))
     return nothing
 end
 
