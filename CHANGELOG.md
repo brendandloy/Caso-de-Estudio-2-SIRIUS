@@ -4,6 +4,15 @@ Cambios relevantes de SIRIUS en el Caso de Estudio 2. Formato basado en [Keep a 
 
 ## [Sin publicar]
 
+### 2026-10-30
+#### Añadido
+- `src/Parameters.jl`: parámetros maestros del programa (configuración que no elige el usuario). Primer parámetro: `RANDOM_W_RANGE_DEG_S = (0.5, 5.0)`, rango de |ω| del modo de actitud `random`.
+- `dcm_to_quat` (método de Shepperd), `omega_matrix` y `quat_step` en `Attitude/Quaternions.jl`.
+
+#### Cambiado
+- Modos `spin` y `random`: la actitud se propaga como cuaternión con la cinemática del T6 (`q̇ = ½ Ω(ω) q`), paso a paso con la exponencial exacta para ω constante y renormalización. Los resultados coinciden con la versión anterior (diferencia del orden del redondeo).
+- Modo `random`: el rango de |ω| ya no se da en el JSON (`w_range_deg_s` da error); se toma de `RANDOM_W_RANGE_DEG_S`. Ejemplo `ejemplo_actitud.json` actualizado.
+
 ### 2026-10-29
 #### Añadido
 - Pruebas `test/test_geometry.jl`.

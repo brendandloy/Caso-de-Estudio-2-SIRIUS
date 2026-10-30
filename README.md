@@ -105,10 +105,11 @@ Una clave mal escrita en la spec, en `scenario` o en `member_fields` (p. ej. `"i
     ├── Project.jl          # Módulo raíz: incluye todos los submódulos
     ├── Types.jl            # Tipos de datos (State, TrajectoryData, AttitudeData…)
     ├── Constants.jl        # Constantes físicas (μ, R, ω⊕, WGS84…)
+    ├── Parameters.jl       # Parámetros maestros del programa (no los elige el usuario; ver abajo)
     ├── Transformations.jl  # Rotaciones y conversiones de sistemas de referencia
     ├── Attitude/           # Actitud de los objetivos (ver abajo)
     │   ├── Attitude.jl       # Tipo base, registro de modos, lectura del bloque "attitude"
-    │   ├── Quaternions.jl    # Cuaternión, Euler, DCM elementales y sorteo uniforme (T6)
+    │   ├── Quaternions.jl    # Cuaternión, Euler, DCM elementales, sorteo uniforme y propagación (T6)
     │   ├── Frames.jl         # LVLH, direcciones de apuntado y método TRIAD
     │   └── modes/            # spin, random, fixed, pointing
     ├── Environment.jl      # Lectura de configuración, SPICE, Sol, eclipses, LOS, exportación CSV
@@ -150,18 +151,22 @@ Cada objetivo del JSON del simulador lleva un bloque `attitude` obligatorio con 
 | Modo | Parámetros | Comportamiento |
 |---|---|---|
 | `spin` | `w_deg_s`, `w_dir` (ejes cuerpo), orientación inicial opcional | Giro con ω constante alrededor de un eje fijo en el cuerpo |
-| `random` | `w_range_deg_s` = [mín, máx], `seed` | Orientación inicial uniforme, eje uniforme y \|ω\| uniforme en el rango; luego como `spin` |
+| `random` | `seed` (opcional; el generador pone una por miembro) | Orientación inicial uniforme, eje uniforme y \|ω\| uniforme en el rango del parámetro maestro `RANDOM_W_RANGE_DEG_S`; luego como `spin` |
 | `fixed` | `frame` (`ECI` o `LVLH`), orientación | Orientación constante respecto a ECI o a la órbita |
 | `pointing` | `primary` y `secondary`: `body_axis` + `target` | Eje primario hacia `nadir`, `zenith`, `velocity`, `orbit_normal`, `sun` (con `-` para invertir) o un vector ECI; el secundario fija el giro (TRIAD) |
 
 La orientación se da como cuaternión `q` o como `euler_deg` + `sequence`. Para añadir un modo basta con crear un archivo en `src/Attitude/modes/` y registrarlo con `register_attitude!`. Detalle de cada modo: `?parse_spin`, `?parse_random`, `?parse_fixed`, `?parse_pointing`.
 
+### Parámetros maestros (`Parameters`)
+
+`src/Parameters.jl` reúne los parámetros de configuración del programa que fijamos los desarrolladores y que **no** se eligen en el JSON (a diferencia de `Constants.jl`, que solo tiene constantes físicas). Cambiarlos afecta a todos los escenarios. De momento contiene `RANDOM_W_RANGE_DEG_S = (0.5, 5.0)`: rango de |ω| (°/s) del modo de actitud `random`.
+
 ## Modelos físicos
 
 - **Propagación orbital:** gravedad central más armónicos zonales y teserales EGM2008 hasta grado y orden 4 (Montenbruck & Gill, 2000), integrada con `Vern9` (tolerancias 1e-11). Unidades: km, km/s; sistema inercial ECI (J2000).
 - **Actitud de los objetivos:** convenciones del tema T6 (*Attitude Kinematics*). Cuaternión escalar primero, `C(q) = (q_η² − q_vᵀq_v) I + 2 q_v q_vᵀ − 2 q_η [q_v×]` como DCM referencia → cuerpo; Euler con secuencia `abc` y `C = C_c(θ3) C_b(θ2) C_a(θ1)`. El simulador usa la DCM cuerpo → ECI (`AttitudeData.DCM_b2i`, la transpuesta).
-  - `spin`/`random`: solución exacta de la cinemática con ω constante, `C_ib(t) = C_ib(0) R(ê, ω t)`. No es dinámicamente consistente salvo que ê sea un eje principal de inercia (aún no hay dinámica con tensor de inercia).
-  - `random`: orientación uniforme (cuaternión a partir de cuatro normales), eje uniforme en la esfera y |ω| uniforme en el rango.
+  - `spin`/`random`: se propaga el cuaternión con la cinemática del T6, `q̇ = ½ Ω(ω) q`, paso a paso: `q_{k+1} = exp(½ Ω Δt) q_k = [cos(|ω|Δt/2) I₄ + sin(|ω|Δt/2)/|ω| · Ω] q_k` (exacta para ω constante, porque `Ω² = −|ω|² I₄`), renormalizando en cada paso para eliminar el redondeo acumulado. La DCM cuerpo → ECI de cada instante es `C(q)ᵀ`. Sin inercia: el giro con ω constante solo es dinámicamente consistente si ê es un eje principal de inercia (hipótesis aceptada con el tutor, porque los objetos se ven como puntos).
+  - `random`: orientación uniforme (cuaternión a partir de cuatro normales), eje uniforme en la esfera y |ω| uniforme en `RANDOM_W_RANGE_DEG_S` (0,5–5 °/s).
   - LVLH (igual que en `Relative_utils.jl`): x radial, z normal al plano orbital (r × v), y = z × x.
   - `pointing`: método TRIAD con r, v (ECI) y la dirección del Sol (geocéntrica, SPICE). Error si las dos direcciones son paralelas en algún instante.
 - **Entorno:** dirección del Sol con SPICE (DE440s), eclipses por la Tierra, línea de visión y cono de deslumbramiento solar.
@@ -176,7 +181,7 @@ La orientación se da como cuaternión `q` o como `euler_deg` + `sequence`. Para
 
 ## Validación y resultados
 
-- `test/test_attitude.jl` (41 comprobaciones superadas con Julia 1.13.2): matrices de Euler 3-2-1 y 3-1-3 y cuaternión frente a las expresiones del T6; el modo `spin` reproduce el antiguo `propagate_attitude` (diferencia < 1e-10) y cumple `dC_ib/dt = C_ib [ω×]`; media de las DCM aleatorias ≈ 0 (orientación uniforme); `fixed` en LVLH y `pointing` alinean los ejes pedidos. Se ejecuta con `julia --project=. test/test_attitude.jl`.
+- `test/test_attitude.jl` (47 comprobaciones superadas con Julia 1.13.2): matrices de Euler 3-2-1 y 3-1-3 y cuaternión frente a las expresiones del T6; conversión DCM ↔ cuaternión (incluidos giros de 180°); la propagación paso a paso coincide con la solución analítica `C_ib(0) R(ê, ωt)` durante un día con paso de 2 s (diferencia < 1e-9; ≈ 5e-13 en la práctica) y mantiene |q| = 1 tras 10⁵ pasos; el modo `spin` reproduce el antiguo `propagate_attitude` (diferencia < 1e-10) y cumple `dC_ib/dt = C_ib [ω×]`; |ω| de `random` dentro del rango maestro; media de las DCM aleatorias ≈ 0 (orientación uniforme); `fixed` en LVLH y `pointing` alinean los ejes pedidos. Se ejecuta con `julia --project=. test/test_attitude.jl`.
 - `test/test_geometry.jl` (190 comprobaciones superadas con Julia 1.13.2): área de la esfera ≈ 4πr² (−1,2 % por ser un poliedro inscrito), área lateral del cono y del tronco frente a la analítica (< 1 %), L_c del fragmento igual a la pedida, ausencia de normales NaN y de dimensiones negativas en 24 000 sorteos, y generación de las 7 formas en todas las categorías. Se ejecuta con `julia --project=. test/test_geometry.jl`.
 - Resto de la herramienta: [PENDIENTE]
 

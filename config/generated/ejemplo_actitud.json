@@ -37,7 +37,6 @@
             "TA": 2.0,
             "attitude": {
                 "type": "random",
-                "w_range_deg_s": [0.5, 5],
                 "seed": 2373509128
             }
         },
@@ -50,7 +49,6 @@
             "TA": 2.1618951008702174,
             "attitude": {
                 "type": "random",
-                "w_range_deg_s": [0.5, 5],
                 "seed": 3276679313
             }
         },
@@ -63,7 +61,6 @@
             "TA": 2.323790201740434,
             "attitude": {
                 "type": "random",
-                "w_range_deg_s": [0.5, 5],
                 "seed": 1480648954
             }
         },

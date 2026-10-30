@@ -7,7 +7,7 @@
 # Uso (desde la raíz del repositorio):
 #   julia --project=. test/test_attitude.jl
 #
-# Es ligero: solo carga Types, Constants, Transformations y Attitude.
+# Es ligero: solo carga Types, Constants, Transformations, Parameters y Attitude.
 # La trayectoria de prueba es una órbita circular kepleriana analítica.
 #
 # Funciones: circular_traj, old_propagate_attitude
@@ -24,9 +24,10 @@ const ROOT = normpath(joinpath(@__DIR__, ".."))
 isdefined(Main, :Types)           || include(joinpath(ROOT, "src", "Types.jl"))
 isdefined(Main, :Constants)       || include(joinpath(ROOT, "src", "Constants.jl"))
 isdefined(Main, :Transformations) || include(joinpath(ROOT, "src", "Transformations.jl"))
+isdefined(Main, :Parameters)      || include(joinpath(ROOT, "src", "Parameters.jl"))
 isdefined(Main, :Attitude)        || include(joinpath(ROOT, "src", "Attitude", "Attitude.jl"))
 
-using .Types, .Constants, .Transformations, .Attitude
+using .Types, .Constants, .Transformations, .Parameters, .Attitude
 const A = Attitude                     # acceso corto a las funciones internas
 
 """
@@ -142,21 +143,51 @@ maxerr(A1, A2) = maximum(maximum(abs.(a - b)) for (a, b) in zip(A1, A2))
     end
 
     @testset "random" begin
-        b = Dict("type" => "random", "w_range_deg_s" => [1, 5], "seed" => 7)
+        b = Dict{String,Any}("type" => "random", "seed" => 7)
         D1 = compute_attitude(parse_attitude(b, "deb"), TRAJ, SUN).DCM_b2i
         D2 = compute_attitude(parse_attitude(b, "deb"), TRAJ, SUN).DCM_b2i
         D3 = compute_attitude(parse_attitude(merge(b, Dict("seed" => 8)), "deb"), TRAJ, SUN).DCM_b2i
         @test maxerr(D1, D2) == 0                       # misma semilla -> mismo resultado
         @test maxerr(D1, D3) > 1e-3                     # otra semilla -> otra actitud
 
-        # |ω| dentro del rango
-        st = A.sample_random_state(parse_attitude(b, "deb"))
-        @test deg2rad(1) <= st.w_rad_s <= deg2rad(5)
+        # |ω| dentro del rango del parámetro maestro, para muchas semillas
+        wmin, wmax = deg2rad.(RANDOM_W_RANGE_DEG_S)
+        @test all(wmin <= A.sample_random_state(parse_attitude(merge(b, Dict("seed" => s)), "deb")).w_rad_s <= wmax for s in 1:500)
+
+        # El rango ya no se da en el JSON
+        @test_throws ErrorException parse_attitude(merge(b, Dict("w_range_deg_s" => [0, 5])), "deb")
 
         # Orientación uniforme: la media de las DCM sobre todas las rotaciones es la matriz nula
         rng = MersenneTwister(1)
         M = sum(A.quat_to_dcm(A.random_quaternion(rng)) for _ in 1:20000) / 20000
         @test maximum(abs.(M)) < 0.03
+    end
+
+    @testset "Propagación del cuaternión" begin
+        # Ω² = -|ω|² I₄ (propiedad que da la solución cerrada de la exponencial)
+        ω = SVector(0.3, -0.2, 0.5)
+        @test A.omega_matrix(ω)^2 ≈ -dot(ω, ω) * I
+
+        # DCM -> cuaternión -> DCM, incluidos giros de ≈ 180° (q_η ≈ 0, donde falla la fórmula directa)
+        rng = MersenneTwister(2)
+        qs = [A.random_quaternion(rng) for _ in 1:1000]
+        @test all(isapprox(A.quat_to_dcm(A.dcm_to_quat(A.quat_to_dcm(q))), A.quat_to_dcm(q); atol = 1e-12) for q in qs)
+        q180 = SVector(0.0, 0.0, 1.0, 0.0)                              # 180° alrededor de y
+        @test A.dcm_to_quat(A.quat_to_dcm(q180)) ≈ q180
+
+        # Paso a paso = solución analítica de salto único C_ib(t) = C_ib(0)·R(ê, ωt) (ω constante)
+        q0, ê, w = A.random_quaternion(rng), A.random_unit_vector(rng), deg2rad(4.0)
+        tt = collect(0.0:2.0:86400.0)                                    # un día cada 2 s (43 201 pasos)
+        Dstep = A.spin_history(q0, ê, w, tt)
+        C0 = A.quat_to_dcm(q0)'
+        @test maximum(maximum(abs.(Dstep[k] - C0 * axis_angle_rotation(ê, w * tt[k]))) for k in eachindex(tt)) < 1e-9
+
+        # La norma se mantiene en 1 tras muchos pasos (renormalización)
+        q = q0
+        for _ in 1:100000
+            q = A.quat_step(q, w * ê, 2.0)
+        end
+        @test abs(norm(q) - 1) < 1e-14
     end
 
     @testset "fixed" begin

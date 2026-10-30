@@ -163,7 +163,7 @@ const KEY_ORDER = [
     "SMA", "ECC", "INC", "RAAN", "AOP", "TA",
     "attitude", "obs_dir", "position_sigma_km", "velocity_sigma_km_s",
     # Dentro del bloque "attitude": primero el modo y luego sus parámetros
-    "type", "w_deg_s", "w_dir", "w_range_deg_s", "seed", "frame", "q", "euler_deg", "sequence",
+    "type", "w_deg_s", "w_dir", "seed", "frame", "q", "euler_deg", "sequence",
     "primary", "secondary", "body_axis", "target"
 ]
 
@@ -424,8 +424,8 @@ Reglas:
 ```julia
 resolve_attitude(Dict("attitude" => Dict("type" => "spin", "w_deg_s" => 0)), "deb", ctx)
 # Dict("type" => "spin", "w_deg_s" => 0)
-resolve_attitude(Dict("attitude" => Dict("type" => "random", "w_range_deg_s" => [0, 5])), "deb1", ctx)
-# Dict("type" => "random", "w_range_deg_s" => [0, 5], "seed" => 2861592718)
+resolve_attitude(Dict("attitude" => Dict("type" => "random")), "deb1", ctx)
+# Dict("type" => "random", "seed" => 2861592718)
 ```
 """
 function resolve_attitude(group::AbstractDict, name::AbstractString, ctx)

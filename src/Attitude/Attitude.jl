@@ -9,14 +9,15 @@ module Attitude
 # usa la fotometría.
 #
 #   "attitude": {"type": "spin",     "w_deg_s": 2.0, "w_dir": [0, 0, 1]}
-#   "attitude": {"type": "random",   "w_range_deg_s": [0, 5], "seed": 42}
+#   "attitude": {"type": "random",   "seed": 42}
 #   "attitude": {"type": "fixed",    "frame": "LVLH", "euler_deg": [30, 0, 0], "sequence": "321"}
 #   "attitude": {"type": "pointing", "primary":   {"body_axis": [0, 0, 1], "target": "nadir"},
 #                                    "secondary": {"body_axis": [1, 0, 0], "target": "velocity"}}
 #
 # Scripts que contiene:
 #   Attitude.jl     : este archivo; tipo base, registro de modos, lectura del bloque y autocarga
-#   Quaternions.jl  : parametrizaciones de actitud (cuaternión, Euler, DCM elementales, sorteo uniforme)
+#   Quaternions.jl  : parametrizaciones de actitud (cuaternión, Euler, DCM elementales, sorteo
+#                     uniforme) y propagación del cuaternión paso a paso
 #   Frames.jl       : sistemas y direcciones de referencia (LVLH, nadir, Sol...) y método TRIAD
 #   modes/          : un archivo por modo: fixed.jl, pointing.jl, random.jl, spin.jl
 #
@@ -36,15 +37,15 @@ module Attitude
 #   4. register_attitude!("nuevo", parse_nuevo)
 #   No hay que tocar nada más: este módulo incluye todos los .jl de modes/.
 #
-# Dependencias: Types (AttitudeData, TrajectoryData) y Transformations
-# (axis_angle_rotation), que deben estar cargados antes.
+# Dependencias: Types (AttitudeData, TrajectoryData) y Parameters
+# (RANDOM_W_RANGE_DEG_S), que deben estar cargados antes.
 # =============================================================================
 
 export AttitudeSpec, register_attitude!, parse_attitude, parse_member_attitude
 export compute_attitude, attitude_block
 
 using ..Types: AttitudeData, TrajectoryData
-using ..Transformations: axis_angle_rotation    # rotación de Rodrigues, la misma que usaba propagate_attitude
+using ..Parameters: RANDOM_W_RANGE_DEG_S         # rango de |ω| del modo "random" (parámetro maestro)
 
 using LinearAlgebra
 using Random

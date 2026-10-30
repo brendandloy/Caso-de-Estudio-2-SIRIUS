@@ -17,7 +17,7 @@
       "pattern": "formation",
       "chief": {"type": "LEO", "altitude_km": 700, "INC": 90, "RAAN": 5, "TA": 2},
       "layout": {"type": "along_track", "n": 3, "spacing_km": 20},
-      "attitude": {"type": "random", "w_range_deg_s": [0.5, 5.0]}
+      "attitude": {"type": "random"}
     },
     "sat_lvlh": {
       "orbit": {"type": "LEO", "altitude_km": 750, "INC": 90, "RAAN": 8, "TA": 3},
