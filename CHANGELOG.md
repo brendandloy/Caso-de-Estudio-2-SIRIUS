@@ -13,7 +13,7 @@ Cambios relevantes de SIRIUS en el Caso de Estudio 2. Formato basado en [Keep a 
 
 #### Corregido
 - Fragmento irregular (forma 7): daba error siempre, porque llamaba a una función `qhull` que QHull.jl no exporta; ahora usa `chull`. Además, la longitud característica se usaba como si fuera un volumen (un fragmento de 0.1 m salía con ≈ 29 m de radio); ahora la malla se escala para que L_c = (X + Y + Z)/3 sea la pedida.
-- Conos y troncos con el área duplicada: las caras interiores repetían las exteriores. Ahora son ≈ 0.75 mag más débiles, el valor correcto para su tamaño.
+- Conos y troncos con el área duplicada: las caras interiores repetían las exteriores. Ahora son ≈ 0.75 mag más débiles, el valor correcto para su tamaño. Se mantienen sin bases (superficies abiertas).
 - Dimensiones aleatorias negativas en prismas, conos y troncos (≈ 2 % de los conos pequeños): ahora se sortean de una normal truncada a valores positivos.
 - Esfera: los polos ya no se representan con anillos de puntos casi coincidentes, sino con un vértice y un abanico de triángulos.
 - `calculateNormals` descarta, con un aviso, los triángulos degenerados (área nula) en lugar de devolver normales NaN.

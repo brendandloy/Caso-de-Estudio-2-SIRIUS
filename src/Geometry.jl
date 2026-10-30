@@ -197,8 +197,8 @@ end
     hollow_cone(base_radius, height, is_truncated) -> (V, F)
 
 Malla de la superficie lateral de un cono (`is_truncated = false`) o de un tronco de
-cono (`is_truncated = true`), con 50 divisiones en el contorno. No incluye bases
-([PENDIENTE] confirmar con el tutor si deben cerrarse).
+cono (`is_truncated = true`), con 50 divisiones en el contorno. No incluye bases:
+son superficies abiertas (decisión confirmada con el tutor).
 
 Solo se mallan las caras exteriores. Antes había además caras "interiores" con los
 mismos vértices; `calculateNormals` las orientaba hacia fuera, así que duplicaban la
@@ -909,4 +909,4 @@ function generate_debris(sat_size::Int, sub_cat::Int;
     return debris
 end
 
-end # module Geometry
+end # module Geometry
