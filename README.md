@@ -18,7 +18,7 @@ Objetivos de esta iteración:
 
 - **Definición de escenarios:** generador automático de configuraciones (módulo `Scenario`). En curso.
 - **Dinámica de actitud de los objetos:** modos de actitud de los objetivos (módulo `Attitude`). En curso.
-- **Forma de los objetivos:** bloque `shape` con medidas concretas o sorteadas según la población real (módulo `Geometry`). En curso.
+- **Forma de los objetivos:** bloque `shape` con medidas concretas o sorteadas según la población real (módulo `Geometry`). Completado; paneles solares e importación de modelos STP/STL/OBJ, pendientes.
 - **Mayor realismo en la magnitud relativa de los objetos de la imagen.** No iniciado.
 
 El detalle de lo añadido está en [CHANGELOG.md](CHANGELOG.md).
