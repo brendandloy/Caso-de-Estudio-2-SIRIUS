@@ -10,7 +10,7 @@
 # Pasos:
 #   1. Genera el JSON completo del escenario en config/generated/<nombre de la spec>.json
 #      (si ya existe, se sobrescribe; guarda las semillas usadas, así que se puede repetir).
-#   2. Simula con ese JSON: propagación -> actitud -> fotometría -> cámara -> CSV.
+#   2. Simula con ese JSON: propagación -> forma y actitud -> fotometría -> cámara -> CSV.
 # Sin <output_path>, los resultados se escriben en output/<nombre de la spec>/.
 #
 # Funciones:
@@ -75,11 +75,10 @@ function run_simulation(
     end
 
 
-    # Example photometric model per tracked object.
-    # Replace the category/shape assignment here with your own object definitions if needed.
+    # Modelo fotométrico de cada objetivo (malla, áreas y ópticas) según su bloque "shape"
     debris_models = Dict{Symbol, Dict{Symbol,Any}}()
     for obj_name in env.obj_keys
-        debris_models[obj_name] = generate_debris(1, 1; deploy_panels = true, shape_type = 4)
+        debris_models[obj_name] = generate_debris(env.obj_shape[obj_name])
     end
 
     attitude_data = Dict{Symbol,AttitudeData}()

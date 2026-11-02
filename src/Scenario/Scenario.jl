@@ -31,9 +31,11 @@ module Scenario
 #
 # La actitud de los objetivos no es un plugin de Scenario: el Builder valida el bloque
 # "attitude" con el módulo Attitude (src/Attitude/), el mismo que usa el simulador.
+# Lo mismo con la forma: el bloque "shape" lo resuelve y valida el módulo Geometry.
 #
-# Dependencias: Constants (μ, R, ω_earth), Transformations (theta0_from_utc) y
-# Attitude (parse_attitude, attitude_block), que deben estar cargados antes
+# Dependencias: Constants (μ, R, ω_earth), Transformations (theta0_from_utc),
+# Attitude (parse_attitude, attitude_block) y Geometry (shape_block, resolve_shape),
+# que deben estar cargados antes
 # (ver scripts/generate_config.jl).
 # Patterns/tle.jl necesita además los paquetes SatelliteToolboxTle,
 # SatelliteToolboxSgp4 y SatelliteToolboxTransformations en el Project.toml.
@@ -45,6 +47,7 @@ export register_orbit!, register_pattern!, register_layout!, register_pointing!
 using ..Constants          # μ, R (km), ω_earth (rad/s)
 using ..Transformations: theta0_from_utc   # misma rotación terrestre (ERA) que el simulador
 using ..Attitude: parse_attitude, attitude_block   # validación del bloque "attitude" de los objetivos
+using ..Geometry: shape_block, resolve_shape, char_length, parse_shape   # bloque "shape" de los objetivos
 using Dates
 using JSON3
 using LinearAlgebra
@@ -204,4 +207,4 @@ for sub in ("Orbits", "Layouts", "Patterns", "Pointing")
     end
 end
 
-end # module Scenario
+end # module Scenario

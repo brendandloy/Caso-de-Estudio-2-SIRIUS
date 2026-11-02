@@ -7,6 +7,7 @@ using ..Types
 using ..Transformations
 using ..Constants
 using ..Attitude: AttitudeSpec, parse_member_attitude    # lectura del bloque "attitude" de cada objetivo
+using ..Geometry: ShapeSpec, parse_member_shape          # lectura del bloque "shape" de cada objetivo
 
 using StaticArrays
 using SPICE
@@ -106,6 +107,7 @@ function load_config(path::AbstractString)
     obs_pos_sigma = Dict{Symbol, SVector{3,Float64}}()
     obs_vel_sigma = Dict{Symbol, SVector{3,Float64}}()
     obj_attitude = Dict{Symbol, AttitudeSpec}()     # actitud de cada objetivo (modo + parámetros)
+    obj_shape = Dict{Symbol, ShapeSpec}()           # forma de cada objetivo (tipo + medidas + semilla)
     obs_keys = Symbol[]
     obj_keys = Symbol[]
 
@@ -114,6 +116,8 @@ function load_config(path::AbstractString)
         objects[key] = kepler_to_cartesian(dict)
         # Bloque "attitude" obligatorio; las claves antiguas w_deg_s/w_dir dan error con la conversión
         obj_attitude[key] = parse_member_attitude(dict, String(name))
+        # Bloque "shape" obligatorio; si aún hay algo por sortear, se sortea aquí
+        obj_shape[key] = parse_member_shape(dict, String(name))
         push!(obj_keys, key)
     end
 
@@ -161,6 +165,7 @@ function load_config(path::AbstractString)
         obs_keys               = obs_keys,  
         obj_keys               = obj_keys,
         obj_attitude           = obj_attitude,
+        obj_shape              = obj_shape,
         stations_llh           = stations_llh
     )
 end
@@ -601,4 +606,4 @@ function export_data_csvs!(data, los_meas, env; output_root=joinpath(@__DIR__, "
 end
 
 
-end # module
+end # module

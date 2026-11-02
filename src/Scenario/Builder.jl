@@ -20,6 +20,7 @@
 #   check_known_keys                : rechaza claves desconocidas en scenario / member_fields
 #   resolve_pointing                : obtiene obs_dir con el plugin de apuntado
 #   resolve_attitude                : bloque "attitude" de cada objetivo (validado con el módulo Attitude)
+#   resolve_member_shape            : bloque "shape" de cada objetivo (resuelto con el módulo Geometry)
 #   build_section                  : construye objectives u observers
 #   generate_config                 : spec -> Dict completo de escenario
 #   generate_config_file            : spec.json -> JSON en disco
@@ -29,6 +30,8 @@
 #   - Miembros:  DEFAULT_MEMBER_FIELDS < bloque "member_fields" < campo del grupo.
 #   - Actitud:   sin valor por defecto; cada grupo de objetivos la define con su
 #                bloque "attitude" (las claves antiguas w_deg_s / w_dir dan error).
+#   - Forma:     sin valor por defecto; cada grupo de objetivos la define con su
+#                bloque "shape" (lo que no se dé se sortea, una vez por miembro).
 # =============================================================================
 
 # Los seis elementos keplerianos que lee el simulador
@@ -161,9 +164,11 @@ const KEY_ORDER = [
     "background_level", "sigma_read_noise", "upper_percentile", "lower_percentage", "los_sigma_arcsec",
     "phi_sun", "glare_angle_deg", "Vref_phong", "Fref_phong",
     "SMA", "ECC", "INC", "RAAN", "AOP", "TA",
-    "attitude", "obs_dir", "position_sigma_km", "velocity_sigma_km_s",
-    # Dentro del bloque "attitude": primero el modo y luego sus parámetros
-    "type", "w_deg_s", "w_dir", "seed", "frame", "q", "euler_deg", "sequence",
+    "attitude", "shape", "obs_dir", "position_sigma_km", "velocity_sigma_km_s",
+    # Dentro de los bloques "attitude" y "shape": primero el tipo y luego sus parámetros
+    "type", "class", "w_deg_s", "w_dir",
+    "x_m", "y_m", "z_m", "thickness_m", "radius_m", "top_radius_m", "height_m", "lc_m",
+    "seed", "frame", "q", "euler_deg", "sequence",
     "primary", "secondary", "body_axis", "target"
 ]
 
@@ -445,6 +450,59 @@ function resolve_attitude(group::AbstractDict, name::AbstractString, ctx)
 end
 
 """
+    resolve_member_shape(group, name, ctx) -> Dict{String,Any}
+
+Obtiene el bloque `shape` de un objetivo a partir de su grupo de la spec y lo
+resuelve con el mismo código que usa el simulador (`Geometry.resolve_shape`): lo que
+no se dé (forma con `"random"` o medidas) se sortea con el modelo de población.
+
+Reglas:
+- El grupo debe tener un bloque `shape` (ver `Geometry.shape_block`).
+- Cada miembro recibe su propia semilla, sacada de un flujo aleatorio de la spec
+  separado del de las órbitas y del de las actitudes. Por eso la spec no admite
+  `seed` (ni `class`, que solo escribe el generador) dentro del bloque.
+- Con medidas sorteadas se imprime la forma y la L_c de cada miembro.
+
+# Argumentos
+- `group::AbstractDict`: grupo de la spec al que pertenece el objetivo.
+- `name::AbstractString`: nombre del objetivo, para los mensajes.
+- `ctx`: contexto del Builder (usa `ctx.rng_shape`).
+
+# Devuelve
+- `Dict{String,Any}`: bloque `shape` con todas las medidas y `seed`, listo para el JSON.
+
+# Excepciones
+- `ErrorException`: si el grupo no tiene bloque `shape` o pone `seed` / `class` en él.
+- Cualquier error de `Geometry.resolve_shape`.
+
+# Ejemplo
+```julia
+resolve_member_shape(Dict("shape" => Dict("type" => "random")), "deb1", ctx)
+# Dict("type" => "fragment", "class" => "fragment", "lc_m" => 0.137, "seed" => 3518...)
+```
+"""
+function resolve_member_shape(group::AbstractDict, name::AbstractString, ctx)
+    block = shape_block(group, name)
+
+    # La semilla la pone el generador (una por miembro); la clase solo la escribe él
+    for k in ("seed", "class")
+        haskey(block, k) && error("Objective '$name': do not put '$k' in the 'shape' block of a spec; " *
+            "each member gets its own seed from the spec's top-level 'seed'.")
+    end
+
+    seed = Int(rand(ctx.rng_shape, UInt32))
+    out = resolve_shape(block, name; seed = seed)
+
+    # Si algo se ha sorteado, se muestra para saber qué objeto se va a simular
+    if length(out) > length(block) + 1 || block["type"] == "random"
+        lc = char_length(parse_shape(out, name))
+        println("  $name: $(out["type"])", haskey(out, "class") ? " ($(out["class"]))" : "",
+                ", L_c = $(round(lc; sigdigits = 3)) m")
+    end
+    return out
+end
+
+"""
     build_section(groups, ctx, role) -> Dict{String,Any}
 
 Construye la sección `objectives` u `observers` del escenario: expande cada
@@ -453,7 +511,7 @@ grupo con su patrón, valida los miembros y añade los campos propios del rol.
 # Argumentos
 - `groups::AbstractDict`: grupos de la spec (nombre del grupo -> definición).
 - `ctx`: contexto del Builder (incluye `ctx.member_fields`).
-- `role::Symbol`: `:observer` (añade `obs_dir` y sigmas) u otro valor, que se trata como objetivo (añade `attitude`).
+- `role::Symbol`: `:observer` (añade `obs_dir` y sigmas) u otro valor, que se trata como objetivo (añade `attitude` y `shape`).
 
 # Devuelve
 - `Dict{String,Any}`: nombre del miembro -> entrada lista para el JSON.
@@ -465,6 +523,7 @@ grupo con su patrón, valida los miembros y añade los campos propios del rol.
 - `ErrorException`: si hay nombres duplicados o un miembro no supera la validación.
 - `ErrorException`: si un observador no tiene un bloque `pointing` válido.
 - `ErrorException`: si un objetivo no tiene una actitud válida (ver `resolve_attitude`).
+- `ErrorException`: si un objetivo no tiene una forma válida (ver `resolve_member_shape`).
 
 # Ejemplo
 ```julia
@@ -503,8 +562,9 @@ function build_section(groups::AbstractDict, ctx, role::Symbol)
                 entry["position_sigma_km"]   = get(group, "position_sigma_km",   ctx.member_fields["position_sigma_km"])
                 entry["velocity_sigma_km_s"] = get(group, "velocity_sigma_km_s", ctx.member_fields["velocity_sigma_km_s"])
             else
-                # Objetivos: bloque de actitud (obligatorio en el grupo)
+                # Objetivos: bloques de actitud y de forma (obligatorios en el grupo)
                 entry["attitude"] = resolve_attitude(group, name, ctx)
+                entry["shape"]    = resolve_member_shape(group, name, ctx)
             end
 
             out[name] = entry
@@ -614,10 +674,11 @@ function generate_config(spec::AbstractDict; spec_dir::AbstractString = pwd())
 
     # spec_dir permite a los patrones resolver rutas relativas a la spec (p. ej. archivos TLE)
     # rng es el generador aleatorio común a todos los plugins (p. ej. random_LEO)
-    # rng_attitude da las semillas de las actitudes "random"; va aparte para no alterar las órbitas
+    # rng_attitude da las semillas de las actitudes "random" y rng_shape las de las formas;
+    # van aparte para que cambiar una no altere las órbitas ni la otra
     ctx = (epoch = DateTime(String(cfg["init_epoch"])), mu = μ, R = R,
            member_fields = member_fields, spec_dir = spec_dir, rng = MersenneTwister(seed),
-           rng_attitude = MersenneTwister(seed + 1))
+           rng_attitude = MersenneTwister(seed + 1), rng_shape = MersenneTwister(seed + 2))
 
     objectives = build_section(get(spec, "objectives", Dict{String,Any}()), ctx, :objective)
     isempty(objectives) && error("The spec needs at least one objective.")
@@ -665,4 +726,4 @@ function generate_config_file(spec_path::AbstractString, out_path::AbstractStrin
     println("  objectives: ", join(sort!(collect(keys(cfg["objectives"])); by = sortkey), ", "))
     println("  observers:  ", join(sort!(collect(keys(cfg["observers"]));  by = sortkey), ", "))
     return out_path
-end
+end

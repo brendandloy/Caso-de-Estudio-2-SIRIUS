@@ -18,6 +18,7 @@ Objetivos de esta iteración:
 
 - **Definición de escenarios:** generador automático de configuraciones (módulo `Scenario`). En curso.
 - **Dinámica de actitud de los objetos:** modos de actitud de los objetivos (módulo `Attitude`). En curso.
+- **Forma de los objetivos:** bloque `shape` con medidas concretas o sorteadas según la población real (módulo `Geometry`). En curso.
 - **Mayor realismo en la magnitud relativa de los objetos de la imagen.** No iniciado.
 
 El detalle de lo añadido está en [CHANGELOG.md](CHANGELOG.md).
@@ -63,13 +64,14 @@ Ejemplo de *spec* (observador en LEO polar, objetivo en órbita kepleriana):
 {
   "scenario":   {"init_epoch": "2000-01-01T11:59:28", "Duration_hours": 0.2, "Data_time_step_seconds": 2},
   "objectives": {"deb":  {"orbit": {"type": "keplerian", "SMA": 8800, "ECC": 0.2, "INC": 90, "RAAN": 10, "AOP": 0, "TA": 357.5},
-                          "attitude": {"type": "spin", "w_deg_s": 0}}},
+                          "attitude": {"type": "spin", "w_deg_s": 0},
+                          "shape":    {"type": "cylinder", "radius_m": 1.5, "height_m": 8.0}}},
   "observers":  {"cam1": {"orbit": {"type": "LEO", "altitude_km": 620, "INC": 90, "RAAN": 0, "TA": 0},
                           "pointing": {"type": "fixed", "dir": [0, 1, 0]}}}
 }
 ```
 
-Hay más ejemplos en `config/specs/` (SSO + GEO, formaciones, CW, Walker, TLE, órbitas aleatorias y modos de actitud en `ejemplo_actitud.json`).
+Hay más ejemplos en `config/specs/` (SSO + GEO, formaciones, CW, Walker, TLE, órbitas aleatorias y modos de actitud y formas en `ejemplo_actitud.json`).
 
 ### Crear una spec nueva: `config/specs/plantilla.json`
 
@@ -93,9 +95,9 @@ Una clave mal escrita en la spec, en `scenario` o en `member_fields` (p. ej. `"i
 ├── output/            # Resultados de simulación (ignorado por git)
 ├── test/
 │   ├── test_attitude.jl            # Pruebas del módulo Attitude (convenciones del T6 y modos)
-│   └── test_geometry.jl            # Pruebas de las mallas de Geometry.jl (áreas, L_c, normales)
+│   └── test_geometry.jl            # Pruebas de Geometry (mallas, L_c, ejes, bloque shape, sorteos)
 ├── scripts/
-│   ├── main.jl                     # Spec → JSON completo → simulación (propagación → actitud → fotometría → cámara → CSV)
+│   ├── main.jl                     # Spec → JSON completo → simulación (propagación → forma y actitud → fotometría → cámara → CSV)
 │   ├── generate_config.jl          # Spec → JSON de escenario
 │   ├── Kalman_RSO.jl               # Filtro de Kalman sobre las medidas LOS simuladas
 │   ├── MonteCarlo.jl               # Campañas Monte Carlo sobre la configuración
@@ -114,7 +116,11 @@ Una clave mal escrita en la spec, en `scenario` o en `member_fields` (p. ej. `"i
     │   └── modes/            # spin, random, fixed, pointing
     ├── Environment.jl      # Lectura de configuración, SPICE, Sol, eclipses, LOS, exportación CSV
     ├── Propagator.jl       # Propagación orbital
-    ├── Geometry.jl         # Geometría de los objetos (mallas, normales, áreas, coeficientes ópticos)
+    ├── Geometry/           # Forma de los objetivos (ver abajo)
+    │   ├── Geometry.jl       # Bloque "shape", registro de formas, sorteo, ópticas y generate_debris
+    │   ├── Meshes.jl         # Mallas, normales y áreas; envolvente convexa del fragmento
+    │   ├── Population.jl     # Modelo de población (clases y tamaños de ESA) para los sorteos
+    │   └── shapes/           # sphere, prism, plate, cylinder, cone, trunk, fragment
     ├── Photometry.jl       # Magnitud aparente (modelo de Phong por facetas)
     ├── Camera_sim.jl       # Generación de imagen: estrellas, PSF, fondo, ruido
     ├── Visualization.jl    # Visualización 3D de órbitas (GLMakie)
@@ -142,7 +148,7 @@ Convierte una *spec* corta en el JSON completo que lee `Environment.load_config`
 
 Para añadir un tipo nuevo basta con crear un archivo en la carpeta correspondiente y registrarlo con `register_orbit!`, `register_pattern!`, `register_layout!` o `register_pointing!`. No hay que modificar nada más.
 
-Cada grupo de objetivos debe definir su actitud con un bloque `attitude`, que se aplica a todos los miembros del grupo. Las claves antiguas `w_deg_s`/`w_dir` dan un error que muestra el bloque equivalente. En el modo `random`, cada miembro recibe su propia semilla a partir de la `seed` de la spec.
+Cada grupo de objetivos debe definir su actitud con un bloque `attitude` y su forma con un bloque `shape`, que se aplican a todos los miembros del grupo. Las claves antiguas `w_deg_s`/`w_dir` dan un error que muestra el bloque equivalente. En el modo de actitud `random` y en las formas, cada miembro recibe su propia semilla a partir de la `seed` de la spec; lo que la forma no indica se sortea por miembro y se escribe ya resuelto (medidas concretas y `seed`) en el JSON generado.
 
 ### Actitud de los objetivos (`Attitude`)
 
@@ -157,9 +163,34 @@ Cada objetivo del JSON del simulador lleva un bloque `attitude` obligatorio con 
 
 La orientación se da como cuaternión `q` o como `euler_deg` + `sequence`. Para añadir un modo basta con crear un archivo en `src/Attitude/modes/` y registrarlo con `register_attitude!`. Detalle de cada modo: `?parse_spin`, `?parse_random`, `?parse_fixed`, `?parse_pointing`.
 
+### Forma de los objetivos (`Geometry`)
+
+Cada objetivo lleva un bloque `shape` obligatorio con `type` y, opcionalmente, sus medidas en metros (todas o ninguna):
+
+| `type` | Medidas | L_c = (X + Y + Z)/3 | Ejes cuerpo | Sin medidas, tamaño de |
+|---|---|---|---|---|
+| `sphere` | `radius_m` | 2r | Origen en el centro | objetos de misión |
+| `prism` | `x_m`, `y_m`, `z_m` | (x + y + z)/3 | Origen en el centro, aristas según x, y, z; z longitudinal (sorteado: z ≥ x ≥ y) | satélites |
+| `plate` | `x_m`, `y_m`, `thickness_m` | (x + y + t)/3 | Origen en el centro, z normal a la placa | objetos de misión |
+| `cylinder` | `radius_m`, `height_m` | (4r + h)/3 | Origen en el centro, z eje de revolución | etapas de cohete |
+| `cone` | `radius_m`, `height_m` | (4r + h)/3 | Origen en la base, z hacia el vértice | objetos de misión |
+| `trunk` | `radius_m`, `top_radius_m`, `height_m` | (4R + h)/3 | Origen en la base mayor, z hacia la menor | objetos de misión |
+| `fragment` | `lc_m` | `lc_m` | Origen en el centroide, ejes principales (x mayor) | fragmentos |
+
+- **Medidas concretas:** se usan tal cual, sin mínimo. Si L_c < `SHAPE_LC_MIN_M` se avisa de que el objetivo probablemente no se verá en la imagen.
+- **Sin medidas** (`{"type": "cylinder"}`): se sortean las proporciones de la forma y el tamaño de la clase indicada en la tabla.
+- **`{"type": "random"}`:** se sortean la clase de objeto, la forma y las medidas según la población real (ver *Modelos físicos*); el JSON generado añade la `class` sorteada.
+- **`seed`:** semilla de la malla del fragmento y de las propiedades ópticas; la pone el generador (una por miembro) y no se escribe en la spec.
+
+Para añadir una forma basta con crear un archivo en `src/Geometry/shapes/` y registrarlo con `register_shape!` (contrato en la cabecera de `src/Geometry/Geometry.jl`). Detalle: `?parse_shape`, `?resolve_shape`, `?generate_debris`. Los paneles solares y la importación de modelos STP/STL/OBJ quedan para más adelante.
+
 ### Parámetros maestros (`Parameters`)
 
-`src/Parameters.jl` reúne los parámetros de configuración del programa que fijamos los desarrolladores y que **no** se eligen en el JSON (a diferencia de `Constants.jl`, que solo tiene constantes físicas). Cambiarlos afecta a todos los escenarios. De momento contiene `RANDOM_W_RANGE_DEG_S = (0.5, 5.0)`: rango de |ω| (°/s) del modo de actitud `random`.
+`src/Parameters.jl` reúne los parámetros de configuración del programa que fijamos los desarrolladores y que **no** se eligen en el JSON (a diferencia de `Constants.jl`, que solo tiene constantes físicas). Cambiarlos afecta a todos los escenarios. Contiene:
+
+- `RANDOM_W_RANGE_DEG_S = (0.5, 5.0)`: rango de |ω| (°/s) del modo de actitud `random`.
+- `SHAPE_LC_MIN_M = 0.10`: L_c mínima (m) de los objetivos con medidas sorteadas.
+- Modelo de población de las formas sorteadas: `SHAPE_CLASS_COUNTS`, `SHAPE_WEIGHTS_BY_CLASS`, `FRAGMENT_LC_BREAKS_M`, `FRAGMENT_LC_BETAS`, `PAYLOAD_AREA_BINS_M2`, `ROCKET_BODY_AREA_BINS_M2`, `MISSION_RELATED_LC_RANGE_M` y los rangos de proporciones de cada forma (`PRISM_RATIO_RANGE` … `TRUNK_RADIUS_RATIO_RANGE`). Cada uno indica su fuente en el archivo.
 
 ## Modelos físicos
 
@@ -170,7 +201,9 @@ La orientación se da como cuaternión `q` o como `euler_deg` + `sequence`. Para
   - LVLH (igual que en `Relative_utils.jl`): x radial, z normal al plano orbital (r × v), y = z × x.
   - `pointing`: método TRIAD con r, v (ECI) y la dirección del Sol (geocéntrica, SPICE). Error si las dos direcciones son paralelas en algún instante.
 - **Entorno:** dirección del Sol con SPICE (DE440s), eclipses por la Tierra, línea de visión y cono de deslumbramiento solar.
-- **Geometría de los objetos:** cuerpos triangulados (prismas, esferas, placas, cilindros, conos, troncos y fragmentos) con paneles opcionales y coeficientes ópticos aleatorios. Las dimensiones aleatorias siguen normales truncadas a valores positivos. Conos y troncos: solo superficie lateral exterior, sin bases (superficies abiertas). Fragmentos: envolvente convexa de puntos aleatorios escalada a la longitud característica del NASA Standard Breakup Model, L_c = (X + Y + Z)/3 (dimensiones en los ejes principales). Los paneles no tienen geometría propia: solo modifican los coeficientes ópticos medios.
+- **Geometría de los objetos:** cuerpos triangulados (prismas, esferas, placas, cilindros, conos, troncos y fragmentos) en ejes cuerpo, con medidas en m y mallas en km (áreas en km², las de la fotometría). Conos y troncos: solo superficie lateral exterior, sin bases (superficies abiertas). Fragmentos: envolvente convexa de 10–30 puntos aleatorios, en sus ejes principales y escalada a la longitud característica del NASA Standard Breakup Model, L_c = (X + Y + Z)/3. Sin paneles solares (pendiente).
+  - **Ópticas:** coeficientes C_abs, C_spec, C_diff con normales truncadas alrededor de valores nominales (CE2 de Ortiz); el prisma pondera cuerpo y tapas ±z por área, la placa usa el material de panel. Todo lo aleatorio de un objetivo usa su `seed`.
+  - **Modelo de población** (formas sorteadas), con datos de ESA's Annual Space Environment Report, issue 10.1 (2026): la clase de objeto se sortea en proporción a los objetos catalogados en LEO (tabla 3.1: 59,5 % satélites, 33,9 % fragmentos, 3,8 % etapas, 2,8 % objetos de misión con L_c ≥ 10 cm); los fragmentos siguen N(>L_c) ∝ L_c^−β por tramos (β = 2,17 de 1 mm a 1 cm y 1,36 de 1 a 10 cm, de MASTER 2026; β = 1,6 de 10 cm a 1 m, NASA SBM) y, si L_min < 10 cm, su peso crece con esa ley; el área media de satélites y etapas sale de los histogramas de las figuras 3.1b y 3.2b (lectura aproximada) y se convierte en tamaño con el teorema de Cauchy (área proyectada media = superficie/4, cuerpo convexo); los objetos de misión tienen L_c log-uniforme en 0,1–3 m (supuesto). Las proporciones de cada forma son uniformes en rangos aproximados de objetos reales. Supuestos: clase → forma (satélite → prisma, etapa → cilindro, fragmento → fragmento, objeto de misión → placa, cono o tronco) y clase independiente del tamaño por encima de 10 cm; el área de los satélites incluye paneles, así que el prisma equivalente sale mayor que el cuerpo real.
 - **Fotometría:** modelo de Phong por facetas (componentes difusa y especular) para obtener la magnitud aparente V.
 - **Cámara:** catálogo Hipparcos dentro del campo de visión, PSF gaussiana, fondo, ruido Poisson, ruido de lectura y *bias*. Las medidas LOS se exportan con error. Por cada observador se escriben siempre `los_measurements.csv`, `state_measurements.csv` y `debris_positions.csv` (RSOs en el campo de visión con su posición en píxeles y su magnitud V en cada instante); los PNG solo con `image_generation_flag = true`.
 - **Escenarios:**
@@ -182,7 +215,8 @@ La orientación se da como cuaternión `q` o como `euler_deg` + `sequence`. Para
 ## Validación y resultados
 
 - `test/test_attitude.jl` (47 comprobaciones superadas con Julia 1.13.2): matrices de Euler 3-2-1 y 3-1-3 y cuaternión frente a las expresiones del T6; conversión DCM ↔ cuaternión (incluidos giros de 180°); la propagación paso a paso coincide con la solución analítica `C_ib(0) R(ê, ωt)` durante un día con paso de 2 s (diferencia < 1e-9; ≈ 5e-13 en la práctica) y mantiene |q| = 1 tras 10⁵ pasos; el modo `spin` reproduce el antiguo `propagate_attitude` (diferencia < 1e-10) y cumple `dC_ib/dt = C_ib [ω×]`; |ω| de `random` dentro del rango maestro; media de las DCM aleatorias ≈ 0 (orientación uniforme); `fixed` en LVLH y `pointing` alinean los ejes pedidos. Se ejecuta con `julia --project=. test/test_attitude.jl`.
-- `test/test_geometry.jl` (190 comprobaciones superadas con Julia 1.13.2): área de la esfera ≈ 4πr² (−1,2 % por ser un poliedro inscrito), área lateral del cono y del tronco frente a la analítica (< 1 %), L_c del fragmento igual a la pedida, ausencia de normales NaN y de dimensiones negativas en 24 000 sorteos, y generación de las 7 formas en todas las categorías. Se ejecuta con `julia --project=. test/test_geometry.jl`.
+- `test/test_geometry.jl` (602 comprobaciones superadas con Julia 1.12.7): área de la esfera ≈ 4πr² (−1,2 % por ser un poliedro inscrito), del prisma, y lateral del cono y del tronco frente a la analítica (< 1 %); envolvente convexa y L_c del fragmento igual a la pedida, con los ejes principales ordenados; L_c de las fórmulas frente a la malla de cada forma (< 2 %) y orientación de los ejes de cilindro y cono; errores de validación del bloque `shape` y aviso por debajo de `SHAPE_LC_MIN_M`; sorteos reproducibles, proporciones dentro de los rangos maestros, L_c ≥ 0,1 m y proporción de fragmentos y ley de potencias en 4000 objetivos `random`; `generate_debris` sin normales NaN para todas las formas. La envolvente convexa propia se comparó con `scipy.spatial.ConvexHull` en 50 fragmentos (misma área, volumen y número de caras). Se ejecuta con `julia --project=. test/test_geometry.jl`.
+- Simulación completa de `config/specs/ejemplo_actitud.json` sin errores (≈ 10 s): seis objetivos con los cuatro modos de actitud y formas con medidas concretas, sorteadas y `random`.
 - Resto de la herramienta: [PENDIENTE]
 
 ## Créditos

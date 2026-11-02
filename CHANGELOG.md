@@ -4,6 +4,26 @@ Cambios relevantes de SIRIUS en el Caso de Estudio 2. Formato basado en [Keep a 
 
 ## [Sin publicar]
 
+### 2026-11-01
+#### Añadido
+- Bloque `shape` obligatorio en cada objetivo (spec y JSON del simulador): `type` (`sphere`, `prism`, `plate`, `cylinder`, `cone`, `trunk`, `fragment` o `random`) y, opcionalmente, todas sus medidas en metros. Sin medidas se sortean; con `random` se sortean también la clase de objeto y la forma. El generador escribe el bloque ya resuelto, con una `seed` por miembro.
+- Modelo de población para las formas sorteadas (`src/Geometry/Population.jl`), con datos del informe de entorno espacial de ESA de 2026: clases de objeto de la tabla 3.1, ley de potencias por tramos de MASTER 2026 y del NASA SBM para los fragmentos, e histogramas de área de satélites y etapas.
+- Parámetros maestros de la forma en `src/Parameters.jl`, entre ellos `SHAPE_LC_MIN_M = 0.10` m. Con medidas concretas por debajo de ese valor se avisa de que el objetivo probablemente no se verá.
+- Ejes cuerpo y longitud característica documentados para cada forma (cabecera de `src/Geometry/Geometry.jl` y README).
+- Registro de formas (`register_shape!`): para añadir una basta con un archivo en `src/Geometry/shapes/`.
+
+#### Cambiado
+- `Geometry` pasa a la carpeta `src/Geometry/` (`Geometry.jl`, mallas, población y una forma por archivo), como `Attitude` y `Scenario`, y se carga antes de `Scenario`, que lo usa para resolver las formas. El antiguo `src/Geometry.jl` se elimina.
+- `generate_debris(spec::ShapeSpec)` sustituye a `generate_debris(sat_size, sub_cat; deploy_panels, shape_type)`. Malla del fragmento, coeficientes ópticos y `alpha` usan la semilla del objetivo: la misma spec da siempre el mismo objeto.
+- Tronco de cono: el radio superior es una medida (`top_radius_m`) en lugar de sortearse dentro de la malla.
+- Prisma sorteado: el eje z es la dirección longitudinal (z ≥ x ≥ y), de modo que las caras ±z (tapas, con su propio material) son los extremos.
+- Fragmento: la malla se expresa en sus ejes principales (x la dimensión mayor) y la envolvente convexa se calcula sin QHull (comparada con `scipy.spatial.ConvexHull`). QHull sigue en `Project.toml`, pero ya no se usa.
+- Specs de ejemplo y `plantilla.json` con su bloque `shape`. `ejemplo_leo.json` conserva la caja de 4,1 × 4,1 × 12,8 m que se simulaba antes.
+- `test/test_geometry.jl` reescrito para el nuevo módulo (602 comprobaciones).
+
+#### Eliminado
+- `sat_size`, `sub_cat` y las funciones `_dims_*` (catálogo de medidas heredado); `deploy_panels` y la caja fija de 4,1 × 4,1 × 12,8 m escrita a mano en `generate_debris`; `generateRandomShape`. Los paneles solares se modelarán más adelante.
+
 ### 2026-10-30
 #### Añadido
 - `src/Parameters.jl`: parámetros maestros del programa (configuración que no elige el usuario). Primer parámetro: `RANDOM_W_RANGE_DEG_S = (0.5, 5.0)`, rango de |ω| del modo de actitud `random`.

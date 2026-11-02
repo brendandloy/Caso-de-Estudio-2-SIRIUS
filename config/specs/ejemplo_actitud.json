@@ -5,29 +5,34 @@
     "init_epoch": "2000-01-01T11:59:28",
     "Duration_hours": 0.2,
     "Data_time_step_seconds": 2,
-    "graphic_display_flag": false
+    "graphic_display_flag": false,
+    "image_generation_flag": false
   },
 
   "objectives": {
     "deb_spin": {
       "orbit": {"type": "keplerian", "SMA": 8800.0, "ECC": 0.2, "INC": 90, "RAAN": 10, "AOP": 0.0, "TA": 357.5},
-      "attitude": {"type": "spin", "w_deg_s": 2.0, "w_dir": [0, 0, 1], "euler_deg": [0, 45, 0], "sequence": "321"}
+      "attitude": {"type": "spin", "w_deg_s": 2.0, "w_dir": [0, 0, 1], "euler_deg": [0, 45, 0], "sequence": "321"},
+      "shape": {"type": "cylinder", "radius_m": 1.5, "height_m": 8.0}
     },
     "deb_random": {
       "pattern": "formation",
       "chief": {"type": "LEO", "altitude_km": 700, "INC": 90, "RAAN": 5, "TA": 2},
       "layout": {"type": "along_track", "n": 3, "spacing_km": 20},
-      "attitude": {"type": "random"}
+      "attitude": {"type": "random"},
+      "shape": {"type": "random"}
     },
     "sat_lvlh": {
       "orbit": {"type": "LEO", "altitude_km": 750, "INC": 90, "RAAN": 8, "TA": 3},
-      "attitude": {"type": "fixed", "frame": "LVLH", "euler_deg": [0, 30, 0], "sequence": "321"}
+      "attitude": {"type": "fixed", "frame": "LVLH", "euler_deg": [0, 30, 0], "sequence": "321"},
+      "shape": {"type": "prism", "x_m": 1.0, "y_m": 1.0, "z_m": 1.5}
     },
     "sat_nadir": {
       "orbit": {"type": "LEO", "altitude_km": 800, "INC": 90, "RAAN": 12, "TA": 1},
       "attitude": {"type": "pointing",
                    "primary":   {"body_axis": [0, 0, 1], "target": "nadir"},
-                   "secondary": {"body_axis": [1, 0, 0], "target": "velocity"}}
+                   "secondary": {"body_axis": [1, 0, 0], "target": "velocity"}},
+      "shape": {"type": "prism"}
     }
   },
 

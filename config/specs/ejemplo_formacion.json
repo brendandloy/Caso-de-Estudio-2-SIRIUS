@@ -15,7 +15,8 @@
         {"dM": 0.05},
         {"dINC": 0.02, "dRAAN": 0.02}
       ]},
-      "attitude": {"type": "spin", "w_deg_s": 0}
+      "attitude": {"type": "spin", "w_deg_s": 0},
+      "shape": {"type": "random"}
     }
   },
 

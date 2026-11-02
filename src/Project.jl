@@ -9,12 +9,12 @@ include("Constants.jl")
 include("Parameters.jl")          # parámetros maestros del programa (no los elige el usuario)
 include("Transformations.jl")
 include("Attitude/Attitude.jl")     # actitud de los objetivos; Environment la usa al leer el JSON
+include("Geometry/Geometry.jl")     # forma de los objetivos; la usan el generador y Environment
 include("Scenario/Scenario.jl")     # generador spec -> JSON completo (lo usa scripts/main.jl)
 include("Environment.jl")
 include("Propagator.jl")
 include("Visualization.jl")
 include("Camera_sim.jl")
-include("Geometry.jl")
 include("Photometry.jl")
 
 # ========================
@@ -34,4 +34,4 @@ using .CameraSim
 using .Geometry
 using .Photometry
 
-end # module Project
+end # module Project
