@@ -19,7 +19,10 @@
     "cam1": {
       "pattern": "single",
       "orbit": {"type": "LEO", "perigee_km": 614.8637, "apogee_km": 628.8637, "INC": 90, "RAAN": 0, "AOP": 0.0, "TA": 0.0},
-      "pointing": {"type": "fixed", "dir": [0.0, 1.0, 0.0]},
+      "attitude": {"type": "pointing",
+                   "primary":   {"body_axis": [0, 0, 1],  "direction": [0.0, 1.0, 0.0]},
+                   "secondary": {"body_axis": [0, -1, 0], "direction": [0, 0, 1]}},
+      "camera_mount": {"boresight": [0, 0, 1], "up": [0, -1, 0]},
       "position_sigma_km": [0.015, 0.015, 0.015],
       "velocity_sigma_km_s": [0.00002, 0.00002, 0.00002]
     }

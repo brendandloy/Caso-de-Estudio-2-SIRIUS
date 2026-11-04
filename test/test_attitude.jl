@@ -2,7 +2,8 @@
 # test_attitude.jl
 #
 # Pruebas del módulo Attitude: convenciones del Tema 6: Attitude Kinematics, 
-# compatibilidad con el antiguo propagate_attitude y comportamiento de cada modo.
+# compatibilidad con el antiguo propagate_attitude, comportamiento de cada modo,
+# montaje de la cámara (C_cb) y orientación de la imagen.
 #
 # Uso (desde la raíz del repositorio):
 #   julia --project=. test/test_attitude.jl
@@ -211,8 +212,8 @@ maxerr(A1, A2) = maximum(maximum(abs.(a - b)) for (a, b) in zip(A1, A2))
 
     @testset "pointing" begin
         b = Dict("type" => "pointing",
-                 "primary"   => Dict("body_axis" => [0, 0, 1], "target" => "nadir"),
-                 "secondary" => Dict("body_axis" => [1, 0, 0], "target" => "sun"))
+                 "primary"   => Dict("body_axis" => [0, 0, 1], "direction" => "nadir"),
+                 "secondary" => Dict("body_axis" => [1, 0, 0], "direction" => "sun"))
         D = compute_attitude(parse_attitude(b, "sat"), TRAJ, SUN).DCM_b2i
         for k in (1, 120, 361)
             r = TRAJ.r[k]
@@ -225,21 +226,99 @@ maxerr(A1, A2) = maximum(maximum(abs.(a - b)) for (a, b) in zip(A1, A2))
 
         # Direcciones siempre paralelas o ejes del cuerpo paralelos -> error al leer
         bad = Dict("type" => "pointing",
-                   "primary"   => Dict("body_axis" => [0, 0, 1], "target" => "nadir"),
-                   "secondary" => Dict("body_axis" => [1, 0, 0], "target" => "zenith"))
+                   "primary"   => Dict("body_axis" => [0, 0, 1], "direction" => "nadir"),
+                   "secondary" => Dict("body_axis" => [1, 0, 0], "direction" => "zenith"))
         @test_throws ErrorException parse_attitude(bad, "sat")
-        bad["secondary"] = Dict("body_axis" => [0, 0, -1], "target" => "sun")
+        bad["secondary"] = Dict("body_axis" => [0, 0, -1], "direction" => "sun")
         @test_throws ErrorException parse_attitude(bad, "sat")
     end
 
+    @testset "camera_mount" begin
+        # Montaje por defecto: ejes cámara = ejes cuerpo
+        @test A.parse_camera_mount(A.DEFAULT_CAMERA_MOUNT, "cam1") ≈ I
+
+        # Cámara mirando a +x cuerpo con +z cuerpo arriba en la imagen
+        C_cb = A.parse_camera_mount(Dict("boresight" => [1, 0, 0], "up" => [0, 0, 1]), "cam1")
+        @test C_cb * SVector(1, 0, 0) ≈ SVector(0, 0, 1)                  # boresight -> z_c
+        @test C_cb * SVector(0, 0, 1) ≈ SVector(0, -1, 0)                 # arriba -> -y_c
+        @test det(C_cb) ≈ 1 && C_cb' * C_cb ≈ I                           # rotación propia (T6, diap. 17)
+
+        # "up" no perpendicular: se proyecta sobre el plano del sensor
+        C2 = A.parse_camera_mount(Dict("boresight" => [0, 0, 1], "up" => [0, -1, 1]), "cam1")
+        @test C2 ≈ I
+
+        # Sin bloque: montaje por defecto (con aviso)
+        @test A.camera_mount_block(Dict("SMA" => 7000), "cam1") == A.DEFAULT_CAMERA_MOUNT
+
+        @test_throws ErrorException A.parse_camera_mount(Dict("boresight" => [0, 0, 1], "up" => [0, 0, -2]), "cam1")  # paralelos
+        @test_throws ErrorException A.parse_camera_mount(Dict("boresight" => [0, 0, 1], "upp" => [0, 1, 0]), "cam1")  # errata
+        @test_throws ErrorException A.parse_camera_mount(Dict("boresight" => [0, 0, 1]), "cam1")                     # falta up
+    end
+
+    @testset "tracking" begin
+        # Objetivo en una órbita circular algo más alta y desfasada: la línea de visión cambia con el tiempo
+        obj = circular_traj(7100.0, 97.0, T .+ 30.0)
+        trajs = Dict("deb1" => obj)
+        b = Dict("type" => "tracking", "objective" => "deb1",
+                 "roll" => Dict("body_axis" => [0, -1, 0], "direction" => [0, 0, 1]))
+        spec = parse_attitude(b, "cam1"; role = "Observer")
+
+        for mount in (Dict("boresight" => [0, 0, 1], "up" => [0, -1, 0]),   # cámara por defecto
+                      Dict("boresight" => [1, 0, 0], "up" => [0, 0, 1]))    # cámara mirando a +x cuerpo
+            C_cb = A.parse_camera_mount(mount, "cam1")
+            bound = bind_attitude(spec, (camera_mount = C_cb, objective_names = keys(trajs), trajectories = trajs))
+            att = compute_attitude(bound, TRAJ, SUN)
+            C_ci = camera_dcm_history(C_cb, att)
+            b_body = SVector{3,Float64}(mount["boresight"])
+            for k in (1, 180, 361)
+                û = normalize(obj.r[k] - TRAJ.r[k])
+                @test att.DCM_b2i[k] * b_body ≈ û                              # el boresight apunta al RSO
+                @test C_ci[k][3, :] ≈ û                                        # fila 3 de C_ci = boresight en ECI
+                @test C_ci[k] * û ≈ SVector(0, 0, 1)                           # el RSO queda en el centro de la imagen
+                @test det(C_ci[k]) ≈ 1 && C_ci[k]' * C_ci[k] ≈ I
+                # El eje de "roll" queda en el plano formado por la línea de visión y la dirección pedida
+                y_eci = att.DCM_b2i[k] * SVector(0, -1, 0)
+                @test abs(dot(y_eci, normalize(cross(û, SVector(0, 0, 1))))) < 1e-10
+                @test dot(y_eci, SVector(0, 0, 1)) >= 0
+            end
+        end
+
+        # Errores: sin cámara (objetivo), objetivo desconocido, roll paralelo al boresight, sin bind
+        C_cb = A.parse_camera_mount(A.DEFAULT_CAMERA_MOUNT, "cam1")
+        @test_throws ErrorException bind_attitude(spec, (camera_mount = nothing, objective_names = nothing, trajectories = nothing))
+        @test_throws ErrorException bind_attitude(spec, (camera_mount = C_cb, objective_names = ["deb2"], trajectories = nothing))
+        bpar = merge(b, Dict("roll" => Dict("body_axis" => [0, 0, 1], "direction" => [0, 0, 1])))
+        @test_throws ErrorException bind_attitude(parse_attitude(bpar, "cam1"; role = "Observer"),
+                                                  (camera_mount = C_cb, objective_names = nothing, trajectories = nothing))
+        @test_throws ErrorException compute_attitude(spec, TRAJ, SUN)
+        @test_throws ErrorException parse_attitude(merge(b, Dict("target" => "deb1")), "cam1"; role = "Observer")   # clave no admitida
+    end
+
+    @testset "Orientación de la imagen" begin
+        # Cámara por defecto apuntando a ECI +y con el norte celeste (ECI +z) arriba en la imagen
+        b = Dict("type" => "pointing",
+                 "primary"   => Dict("body_axis" => [0, 0, 1],  "direction" => [0, 1, 0]),
+                 "secondary" => Dict("body_axis" => [0, -1, 0], "direction" => [0, 0, 1]))
+        att = compute_attitude(parse_attitude(b, "cam1"; role = "Observer"), TRAJ, SUN)
+        C_ci = camera_dcm_history(A.parse_camera_mount(A.DEFAULT_CAMERA_MOUNT, "cam1"), att)[1]
+        bs = SVector(0.0, 1.0, 0.0)
+        east = SVector(-1.0, 0.0, 0.0)          # este en RA = 90°: dirección de RA creciente, ẑ × b̂
+        north = SVector(0.0, 0.0, 1.0)
+
+        # Cámara real (dextrógira): con el norte arriba, el este sale a la IZQUIERDA (x_c < 0)
+        @test (C_ci * normalize(bs + 0.01 * east))[1] < 0
+        @test (C_ci * normalize(bs + 0.01 * north))[2] < 0           # norte hacia arriba (y_c < 0)
+        @test det(C_ci) ≈ 1                                         # no es un espejo
+    end
+
     @testset "Lectura del JSON del simulador" begin
-        # Claves antiguas: error que muestra el bloque equivalente
+        # Los mensajes de error indican si es un objetivo o un observador
         err = try
-            parse_member_attitude(Dict("SMA" => 7000, "w_deg_s" => 0, "w_dir" => [1, 0, 0]), "deb"); ""
+            parse_member_attitude(Dict("SMA" => 7000), "cam1"; role = "Observer"); ""
         catch e
             sprint(showerror, e)
         end
-        @test occursin("\"attitude\": {\"type\": \"spin\"", err)
+        @test occursin("Observer 'cam1'", err)
 
         @test_throws ErrorException parse_member_attitude(Dict("SMA" => 7000), "deb")                     # sin actitud
         @test_throws ErrorException parse_attitude(Dict("type" => "tumbling"), "deb")                    # modo desconocido

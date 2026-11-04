@@ -45,7 +45,7 @@ Lee y valida un bloque `attitude` de tipo `fixed`.
 
 # Argumentos
 - `b::Dict{String,Any}`: bloque `attitude`.
-- `name::AbstractString`: nombre del objetivo, para los mensajes de error.
+- `name::AbstractString`: miembro que lo usa (p. ej. `"Objective 'deb'"`), para los mensajes de error.
 
 # Devuelve
 - `FixedSpec`.
@@ -61,7 +61,7 @@ parse_fixed(Dict{String,Any}("type" => "fixed", "frame" => "LVLH",
 ```
 """
 function parse_fixed(b::Dict{String,Any}, name::AbstractString)
-    who = "Objective '$name' (attitude 'fixed')"
+    who = "$name (attitude 'fixed')"
     check_keys(b, FIXED_KEYS, who)
 
     haskey(b, "frame") || error("$who: missing 'frame' (\"ECI\" or \"LVLH\").")

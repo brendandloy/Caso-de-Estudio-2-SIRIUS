@@ -10,15 +10,15 @@
 #   ẑ = h/|h|          normal al plano orbital, h = r × v
 #   ŷ = ẑ × x̂          a lo largo de la traza (≈ velocidad en órbita casi circular)
 #
-# Direcciones de apuntado ("target"), todas unitarias y en ECI:
+# Direcciones de apuntado ("direction"), todas unitarias y en ECI:
 #   "nadir" = -r̂   "zenith" = r̂   "velocity" = v̂   "orbit_normal" = ĥ   "sun" = ŝ
 #   Un "-" delante invierte la dirección ("-sun", "-orbit_normal"...).
 #   Un vector [x, y, z] es una dirección inercial fija en ECI.
 #
 # Funciones:
 #   lvlh_to_eci     : DCM C_io (LVLH -> ECI) a partir de r y v
-#   parse_target    : lee un "target" de la spec
-#   target_vector   : evalúa un "target" en un instante
+#   parse_direction : lee una "direction" de la spec
+#   direction_vector: evalúa una "direction" en un instante
 #   triad           : DCM C_ib que alinea dos ejes cuerpo con dos direcciones
 # =============================================================================
 
@@ -54,13 +54,13 @@ function lvlh_to_eci(r::AbstractVector, v::AbstractVector)
     return hcat(x̂, ŷ, ẑ)
 end
 
-# Nombres de dirección admitidos en "target" (sin el signo)
-const TARGET_NAMES = ("nadir", "zenith", "velocity", "orbit_normal", "sun")
+# Nombres de dirección admitidos en "direction" (sin el signo)
+const DIRECTION_NAMES = ("nadir", "zenith", "velocity", "orbit_normal", "sun")
 
 """
-    parse_target(x, who) -> NamedTuple
+    parse_direction(x, who) -> NamedTuple
 
-Lee un `target` de la spec: un nombre de `TARGET_NAMES` (con `-` delante para
+Lee una `direction` de la spec: un nombre de `DIRECTION_NAMES` (con `-` delante para
 invertirlo) o un vector `[x, y, z]` fijo en ECI.
 
 # Argumentos
@@ -76,31 +76,31 @@ invertirlo) o un vector `[x, y, z]` fijo en ECI.
 
 # Ejemplo
 ```julia
-parse_target("-sun", "deb")          # (kind = :sun, sign = -1.0, vec = [0, 0, 0])
-parse_target([0, 0, 2], "deb")       # (kind = :inertial, sign = 1.0, vec = [0, 0, 1])
+parse_direction("-sun", "deb")       # (kind = :sun, sign = -1.0, vec = [0, 0, 0])
+parse_direction([0, 0, 2], "deb")    # (kind = :inertial, sign = 1.0, vec = [0, 0, 1])
 ```
 """
-function parse_target(x, who::AbstractString)
+function parse_direction(x, who::AbstractString)
     if x isa AbstractString
         sgn  = startswith(x, "-") ? -1.0 : 1.0
         name = sgn < 0 ? x[2:end] : x        # nombre sin el signo
-        name in TARGET_NAMES || error(
-            "$who: unknown target '$x'. Use one of $(join(TARGET_NAMES, ", ")) (optionally with '-') or an ECI vector [x, y, z].")
+        name in DIRECTION_NAMES || error(
+            "$who: unknown direction '$x'. Use one of $(join(DIRECTION_NAMES, ", ")) (optionally with '-') or an ECI vector [x, y, z].")
         return (kind = Symbol(name), sign = sgn, vec = zero(SVector{3,Float64}))
     end
-    v = getunit(Dict{String,Any}("target" => x), "target", who)
+    v = getunit(Dict{String,Any}("direction" => x), "direction", who)
     return (kind = :inertial, sign = 1.0, vec = v)
 end
 
 """
-    target_vector(tgt, r, v, s) -> SVector{3,Float64}
+    direction_vector(dir, r, v, s) -> SVector{3,Float64}
 
 Evalúa una dirección de apuntado en un instante, en ECI.
 
 # Argumentos
-- `tgt::NamedTuple`: dirección leída con `parse_target`.
-- `r::AbstractVector`: posición ECI del objetivo (km).
-- `v::AbstractVector`: velocidad ECI del objetivo (km/s).
+- `dir::NamedTuple`: dirección leída con `parse_direction`.
+- `r::AbstractVector`: posición ECI del satélite (km).
+- `v::AbstractVector`: velocidad ECI del satélite (km/s).
 - `s::AbstractVector`: dirección unitaria del Sol en ECI.
 
 # Devuelve
@@ -111,20 +111,20 @@ Evalúa una dirección de apuntado en un instante, en ECI.
 
 # Ejemplo
 ```julia
-target_vector(parse_target("nadir", "deb"), [7000, 0, 0], [0, 7.5, 0], [1, 0, 0])   # [-1, 0, 0]
+direction_vector(parse_direction("nadir", "deb"), [7000, 0, 0], [0, 7.5, 0], [1, 0, 0])   # [-1, 0, 0]
 ```
 """
-function target_vector(tgt, r::AbstractVector, v::AbstractVector, s::AbstractVector)
+function direction_vector(dir, r::AbstractVector, v::AbstractVector, s::AbstractVector)
     r3 = SVector{3,Float64}(r)
     v3 = SVector{3,Float64}(v)
 
-    u = tgt.kind === :nadir        ? -r3 / norm(r3) :
-        tgt.kind === :zenith       ?  r3 / norm(r3) :
-        tgt.kind === :velocity     ?  v3 / norm(v3) :
-        tgt.kind === :orbit_normal ?  normalize(cross(r3, v3)) :
-        tgt.kind === :sun          ?  SVector{3,Float64}(s) / norm(s) :
-                                      tgt.vec                       # :inertial
-    return tgt.sign * u
+    u = dir.kind === :nadir        ? -r3 / norm(r3) :
+        dir.kind === :zenith       ?  r3 / norm(r3) :
+        dir.kind === :velocity     ?  v3 / norm(v3) :
+        dir.kind === :orbit_normal ?  normalize(cross(r3, v3)) :
+        dir.kind === :sun          ?  SVector{3,Float64}(s) / norm(s) :
+                                      dir.vec                       # :inertial
+    return dir.sign * u
 end
 
 """
@@ -163,7 +163,7 @@ function triad(b1::AbstractVector, b2::AbstractVector, r1::AbstractVector, r2::A
     # Base en ECI; si las dos direcciones son paralelas no hay plano que fije el giro
     t1r = SVector{3,Float64}(r1)
     c   = cross(t1r, SVector{3,Float64}(r2))
-    norm(c) > 1e-8 || error("Primary and secondary targets are parallel: the attitude is undefined.")
+    norm(c) > 1e-8 || error("Primary and secondary directions are parallel: the attitude is undefined.")
     t2r = c / norm(c)
     t3r = cross(t1r, t2r)
 

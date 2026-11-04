@@ -16,25 +16,25 @@ module Scenario
 #   Patterns/          : single.jl, formation.jl, walker.jl, tle.jl
 #   Layouts/           : along_track.jl, element_offsets.jl, cw_state.jl, cw_ellipse.jl, pco.jl
 #                        (disposiciones de una formación)
-#   Pointing/          : fixed.jl
 #
-# Hay cuatro tipos de "plugin", cada uno en su carpeta y con un contrato fijo:
+# Hay tres tipos de "plugin", cada uno en su carpeta y con un contrato fijo:
 #   Orbits/    f(params, ctx)          -> Dict con SMA, ECC, INC, RAAN, AOP, TA
 #   Patterns/  f(group,  ctx)          -> Vector{Dict} de elementos (miembros)
 #   Layouts/   f(chief, layout, ctx)   -> Vector{Dict} de miembros a partir de la órbita jefe
-#   Pointing/  f(spec, member, ctx)    -> Vector{Float64}(3) = obs_dir
 #
 # Para añadir un tipo nuevo basta con crear un archivo en la carpeta que
 # corresponda y terminarlo con register_orbit! / register_pattern! /
-# register_layout! / register_pointing!. No hay que tocar nada más: este módulo incluye
+# register_layout!. No hay que tocar nada más: este módulo incluye
 # automáticamente todos los .jl de esas carpetas.
 #
-# La actitud de los objetivos no es un plugin de Scenario: el Builder valida el bloque
-# "attitude" con el módulo Attitude (src/Attitude/), el mismo que usa el simulador.
+# La actitud (objetivos y observadores) y el montaje de la cámara (observadores) no son
+# plugins de Scenario: el Builder valida los bloques "attitude" y "camera_mount" con el
+# módulo Attitude (src/Attitude/), el mismo que usa el simulador.
 # Lo mismo con la forma: el bloque "shape" lo resuelve y valida el módulo Geometry.
 #
 # Dependencias: Constants (μ, R, ω_earth), Transformations (theta0_from_utc),
-# Attitude (parse_attitude, attitude_block) y Geometry (shape_block, resolve_shape),
+# Attitude (parse_attitude, attitude_block, bind_attitude, camera_mount_block,
+# parse_camera_mount) y Geometry (shape_block, resolve_shape),
 # que deben estar cargados antes
 # (ver scripts/generate_config.jl).
 # Patterns/tle.jl necesita además los paquetes SatelliteToolboxTle,
@@ -42,11 +42,12 @@ module Scenario
 # =============================================================================
 
 export generate_config, generate_config_file, write_config
-export register_orbit!, register_pattern!, register_layout!, register_pointing!
+export register_orbit!, register_pattern!, register_layout!
 
 using ..Constants          # μ, R (km), ω_earth (rad/s)
 using ..Transformations: theta0_from_utc   # misma rotación terrestre (ERA) que el simulador
-using ..Attitude: parse_attitude, attitude_block   # validación del bloque "attitude" de los objetivos
+using ..Attitude: parse_attitude, attitude_block, bind_attitude   # bloque "attitude" de objetivos y observadores
+using ..Attitude: camera_mount_block, parse_camera_mount          # bloque "camera_mount" de los observadores
 using ..Geometry: shape_block, resolve_shape, char_length, parse_shape   # bloque "shape" de los objetivos
 using Dates
 using JSON3
@@ -61,7 +62,6 @@ using Random          # generador aleatorio con semilla (órbitas aleatorias)
 const ORBITS    = Dict{String,Function}()
 const PATTERNS  = Dict{String,Function}()
 const LAYOUTS   = Dict{String,Function}()
-const POINTINGS = Dict{String,Function}()
 
 # Registra una función de órbita bajo un nombre; devuelve nothing
 register_orbit!(name::AbstractString, f::Function)    = (ORBITS[String(name)]    = f; nothing)
@@ -71,9 +71,6 @@ register_pattern!(name::AbstractString, f::Function)  = (PATTERNS[String(name)] 
 
 # Registra una función de disposición de formación bajo un nombre; devuelve nothing
 register_layout!(name::AbstractString, f::Function)   = (LAYOUTS[String(name)]   = f; nothing)
-
-# Registra una función de apuntado bajo un nombre; devuelve nothing
-register_pointing!(name::AbstractString, f::Function) = (POINTINGS[String(name)] = f; nothing)
 
 """
     lookup(registry, kind, name) -> Function
@@ -85,7 +82,7 @@ existente. El Builder no conoce ningún tipo concreto; solo pregunta al
 registro por el nombre que aparece en la spec.
 
 # Argumentos
-- `registry::AbstractDict`: registro donde buscar (ORBITS, PATTERNS, LAYOUTS o POINTINGS).
+- `registry::AbstractDict`: registro donde buscar (ORBITS, PATTERNS o LAYOUTS).
 - `kind::AbstractString`: texto que describe el registro, solo para el mensaje de error.
 - `name::AbstractString`: nombre del tipo pedido en la spec.
 
@@ -192,7 +189,7 @@ include(joinpath(@__DIR__, "Orbital_utils.jl"))   # helpers compartidos por los 
 include(joinpath(@__DIR__, "Relative_utils.jl"))  # helpers de movimiento relativo (Clohessy-Wiltshire)
 
 # Se incluyen todos los .jl de cada carpeta de plugins, en orden alfabético
-for sub in ("Orbits", "Layouts", "Patterns", "Pointing")
+for sub in ("Orbits", "Layouts", "Patterns")
     dir = joinpath(@__DIR__, sub)
     isdir(dir) || continue
 

@@ -49,7 +49,7 @@ Lee y valida un bloque `attitude` de tipo `spin`.
 
 # Argumentos
 - `b::Dict{String,Any}`: bloque `attitude`.
-- `name::AbstractString`: nombre del objetivo, para los mensajes de error.
+- `name::AbstractString`: miembro que lo usa (p. ej. `"Objective 'deb'"`), para los mensajes de error.
 
 # Devuelve
 - `SpinSpec`.
@@ -64,7 +64,7 @@ parse_spin(Dict{String,Any}("type" => "spin", "w_deg_s" => 2, "w_dir" => [0, 0, 
 ```
 """
 function parse_spin(b::Dict{String,Any}, name::AbstractString)
-    who = "Objective '$name' (attitude 'spin')"
+    who = "$name (attitude 'spin')"
     check_keys(b, SPIN_KEYS, who)
 
     w = getnum(b, "w_deg_s", who)

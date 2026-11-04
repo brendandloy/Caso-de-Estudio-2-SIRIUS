@@ -4,9 +4,9 @@
   "scenario": {
     "init_epoch": "2000-01-01T11:59:28",
     "Duration_hours": 0.2,
-    "Data_time_step_seconds": 2,
+    "Data_time_step_seconds": 120,
     "graphic_display_flag": false,
-    "image_generation_flag": false
+    "image_generation_flag": true
   },
 
   "objectives": {
@@ -30,8 +30,8 @@
     "sat_nadir": {
       "orbit": {"type": "LEO", "altitude_km": 800, "INC": 90, "RAAN": 12, "TA": 1},
       "attitude": {"type": "pointing",
-                   "primary":   {"body_axis": [0, 0, 1], "target": "nadir"},
-                   "secondary": {"body_axis": [1, 0, 0], "target": "velocity"}},
+                   "primary":   {"body_axis": [0, 0, 1], "direction": "nadir"},
+                   "secondary": {"body_axis": [1, 0, 0], "direction": "velocity"}},
       "shape": {"type": "prism"}
     }
   },
@@ -39,7 +39,16 @@
   "observers": {
     "cam1": {
       "orbit": {"type": "LEO", "perigee_km": 614.8637, "apogee_km": 628.8637, "INC": 90, "RAAN": 0, "AOP": 0.0, "TA": 0.0},
-      "pointing": {"type": "fixed", "dir": [0.0, 1.0, 0.0]}
+      "attitude": {"type": "pointing",
+                   "primary":   {"body_axis": [0, 0, 1],  "direction": [0.0, 1.0, 0.0]},
+                   "secondary": {"body_axis": [0, -1, 0], "direction": [0, 0, 1]}},
+      "camera_mount": {"boresight": [0, 0, 1], "up": [0, -1, 0]}
+    },
+    "cam_track": {
+      "orbit": {"type": "LEO", "perigee_km": 614.8637, "apogee_km": 628.8637, "INC": 90, "RAAN": 0, "AOP": 0.0, "TA": 0.0},
+      "attitude": {"type": "tracking", "objective": "sat_nadir",
+                   "roll": {"body_axis": [0, -1, 0], "direction": [0, 0, 1]}},
+      "camera_mount": {"boresight": [0, 0, 1], "up": [0, -1, 0]}
     }
   }
 }

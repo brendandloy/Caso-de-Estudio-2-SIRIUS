@@ -7,7 +7,8 @@
 #     "pattern":  "walker",
 #     "orbit":    {"type": "LEO", "altitude_km": 800, "INC": 55, "RAAN": 0, "TA": 0},
 #     "walker":   {"total": 12, "planes": 3, "phasing": 1, "spread": "delta"},
-#     "pointing": {"type": "fixed", "dir": [0, 1, 0]}
+#     "attitude": {"type": "pointing", "primary": {"body_axis": [0, 0, 1], "direction": "nadir"},
+#                  "secondary": {"body_axis": [1, 0, 0], "direction": "velocity"}}
 #   }
 #
 # - "orbit": órbita del satélite 0 del plano 0 (cualquier tipo registrado). Aporta

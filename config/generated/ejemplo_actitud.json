@@ -1,6 +1,6 @@
 {
     "Duration_hours": 0.2,
-    "Data_time_step_seconds": 2,
+    "Data_time_step_seconds": 120,
     "init_epoch": "2000-01-01T11:59:28",
     "navigation_error_flag": true,
     "graphic_display_flag": false,
@@ -140,11 +140,11 @@
                 "type": "pointing",
                 "primary": {
                     "body_axis": [0, 0, 1],
-                    "target": "nadir"
+                    "direction": "nadir"
                 },
                 "secondary": {
                     "body_axis": [1, 0, 0],
-                    "target": "velocity"
+                    "direction": "velocity"
                 }
             },
             "shape": {
@@ -164,7 +164,43 @@
             "RAAN": 0.0,
             "AOP": 0.0,
             "TA": 0.0,
-            "obs_dir": [0.0, 1.0, 0.0],
+            "attitude": {
+                "type": "pointing",
+                "primary": {
+                    "body_axis": [0, 0, 1],
+                    "direction": [0, 1, 0]
+                },
+                "secondary": {
+                    "body_axis": [0, -1, 0],
+                    "direction": [0, 0, 1]
+                }
+            },
+            "camera_mount": {
+                "boresight": [0, 0, 1],
+                "up": [0, -1, 0]
+            },
+            "position_sigma_km": [0.015, 0.015, 0.015],
+            "velocity_sigma_km_s": [2.0e-5, 2.0e-5, 2.0e-5]
+        },
+        "cam_track": {
+            "SMA": 7000.0,
+            "ECC": 0.001,
+            "INC": 90.0,
+            "RAAN": 0.0,
+            "AOP": 0.0,
+            "TA": 0.0,
+            "attitude": {
+                "type": "tracking",
+                "objective": "sat_nadir",
+                "roll": {
+                    "body_axis": [0, -1, 0],
+                    "direction": [0, 0, 1]
+                }
+            },
+            "camera_mount": {
+                "boresight": [0, 0, 1],
+                "up": [0, -1, 0]
+            },
             "position_sigma_km": [0.015, 0.015, 0.015],
             "velocity_sigma_km_s": [2.0e-5, 2.0e-5, 2.0e-5]
         }

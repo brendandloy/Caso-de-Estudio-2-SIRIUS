@@ -4,6 +4,23 @@ Cambios relevantes de SIRIUS en el Caso de Estudio 2. Formato basado en [Keep a 
 
 ## [Sin publicar]
 
+### 2026-11-04
+#### Añadido
+- Actitud de los observadores: bloque `attitude` obligatorio en cada observador (spec y JSON del simulador), con los mismos modos que los objetivos. Describe la actitud del satélite.
+- Modo de actitud `tracking` (`src/Attitude/modes/tracking.jl`, solo observadores): el boresight de la cámara apunta en cada instante a un objetivo (`objective`, nombre del miembro en el JSON) y `roll` (`body_axis` + `direction`) fija el giro del satélite alrededor de ese eje.
+- Bloque `camera_mount` de los observadores (`src/Attitude/Mount.jl`): `boresight` y `up` en ejes cuerpo definen el montaje de la cámara, C_cb. Sin bloque se usa boresight = +z cuerpo y arriba = −y cuerpo (C_cb = I) y se avisa; el generador lo escribe en el JSON.
+- `bind_attitude`: paso opcional de los modos que necesitan datos externos (montaje de la cámara, trayectorias de los objetivos); `camera_dcm_history` calcula C_ci = C_cb · C_bi.
+- Pruebas de `camera_mount`, `tracking` y orientación de la imagen en `test/test_attitude.jl`.
+
+#### Cambiado
+- La cámara recibe su orientación C_ci (ECI → cámara) en cada instante en lugar de una dirección fija. Proyección pinhole con ejes cámara dextrógiros (x derecha, y abajo, z boresight), con la misma focal que antes; con actitud variable el campo estelar se recalcula en cada imagen. Corrige el espejo de las imágenes anteriores: con el norte arriba, el este sale ahora a la izquierda, así que los píxeles de `debris_positions.csv` cambian. Con actitud variable, `observed_star_catalog.csv` añade la columna `image_name`.
+- Modo `pointing`: la clave `target` pasa a llamarse `direction` (también en `Frames.jl`: `parse_direction`, `direction_vector`).
+- Specs de ejemplo y `plantilla.json`: el apuntado fijo se escribe como `attitude` `pointing` hacia el mismo vector ECI, con el norte celeste arriba, y `camera_mount` explícito. `ejemplo_actitud.json` añade una cámara en `tracking`.
+
+#### Eliminado
+- Bloque `pointing` de los observadores, `obs_dir` en el JSON del simulador y los plugins de apuntado del generador (`src/Scenario/Pointing/`, `register_pointing!`).
+- Mensaje específico para las claves antiguas `w_deg_s`/`w_dir` y `legacy_to_spin`: ahora dan el error general de bloque `attitude` ausente.
+
 ### 2026-11-01
 #### Añadido
 - Bloque `shape` obligatorio en cada objetivo (spec y JSON del simulador): `type` (`sphere`, `prism`, `plate`, `cylinder`, `cone`, `trunk`, `fragment` o `random`) y, opcionalmente, todas sus medidas en metros. Sin medidas se sortean; con `random` se sortean también la clase de objeto y la forma. El generador escribe el bloque ya resuelto, con una `seed` por miembro.

@@ -6,7 +6,8 @@ export eclipseEarthECI, losECI, sunGlareConeECI
 using ..Types
 using ..Transformations
 using ..Constants
-using ..Attitude: AttitudeSpec, parse_member_attitude    # lectura del bloque "attitude" de cada objetivo
+using ..Attitude: AttitudeSpec, parse_member_attitude    # lectura del bloque "attitude" de cada miembro
+using ..Attitude: camera_mount_block, parse_camera_mount # montaje de la cámara de cada observador (C_cb)
 using ..Geometry: ShapeSpec, parse_member_shape          # lectura del bloque "shape" de cada objetivo
 
 using StaticArrays
@@ -103,7 +104,8 @@ function load_config(path::AbstractString)
 
     # --- Objetos orbitales ---
     objects = Dict{Symbol, State}()
-    obs_dir = Dict{Symbol, SVector{3,Float64}}()
+    obs_attitude = Dict{Symbol, AttitudeSpec}()     # actitud del satélite de cada observador
+    obs_mount = Dict{Symbol, SMatrix{3,3,Float64,9}}()   # montaje de su cámara, C_cb (cuerpo -> cámara)
     obs_pos_sigma = Dict{Symbol, SVector{3,Float64}}()
     obs_vel_sigma = Dict{Symbol, SVector{3,Float64}}()
     obj_attitude = Dict{Symbol, AttitudeSpec}()     # actitud de cada objetivo (modo + parámetros)
@@ -114,7 +116,7 @@ function load_config(path::AbstractString)
     for (name, dict) in cfg.objectives
         key = Symbol("obj_$name")
         objects[key] = kepler_to_cartesian(dict)
-        # Bloque "attitude" obligatorio; las claves antiguas w_deg_s/w_dir dan error con la conversión
+        # Bloque "attitude" obligatorio
         obj_attitude[key] = parse_member_attitude(dict, String(name))
         # Bloque "shape" obligatorio; si aún hay algo por sortear, se sortea aquí
         obj_shape[key] = parse_member_shape(dict, String(name))
@@ -124,8 +126,9 @@ function load_config(path::AbstractString)
     for (name, dict) in cfg.observers
         key = Symbol("obs_$name")
         objects[key] = kepler_to_cartesian(dict)
-        v = SVector{3,Float64}(dict.obs_dir)
-        obs_dir[key] = v / norm(v)
+        # Bloque "attitude" obligatorio; "camera_mount" opcional (por defecto C_cb = I, con aviso)
+        obs_attitude[key] = parse_member_attitude(dict, String(name); role = "Observer")
+        obs_mount[key] = parse_camera_mount(camera_mount_block(dict, String(name)), String(name))
         obs_pos_sigma[key] = SVector{3,Float64}(dict.position_sigma_km)
         obs_vel_sigma[key] = SVector{3,Float64}(dict.velocity_sigma_km_s)
         push!(obs_keys, key)
@@ -159,7 +162,8 @@ function load_config(path::AbstractString)
         camera_config          = camera_config,
         photometry_config      = photometry_config,
         objects                = objects,
-        obs_dir                = obs_dir,
+        obs_attitude           = obs_attitude,
+        obs_mount              = obs_mount,
         obs_pos_sigma          = obs_pos_sigma,
         obs_vel_sigma          = obs_vel_sigma,
         obs_keys               = obs_keys,  

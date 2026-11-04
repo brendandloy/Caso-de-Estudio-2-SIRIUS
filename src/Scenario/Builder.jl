@@ -18,8 +18,8 @@
 #   write_value, write_config       : escritura del JSON con orden de claves estable
 #   validate_elements               : comprobaciones físicas de cada miembro
 #   check_known_keys                : rechaza claves desconocidas en scenario / member_fields
-#   resolve_pointing                : obtiene obs_dir con el plugin de apuntado
-#   resolve_attitude                : bloque "attitude" de cada objetivo (validado con el módulo Attitude)
+#   resolve_attitude                : bloque "attitude" de cada miembro (validado con el módulo Attitude)
+#   resolve_camera_mount            : bloque "camera_mount" de cada observador (montaje de la cámara)
 #   resolve_member_shape            : bloque "shape" de cada objetivo (resuelto con el módulo Geometry)
 #   build_section                  : construye objectives u observers
 #   generate_config                 : spec -> Dict completo de escenario
@@ -28,8 +28,10 @@
 # Prioridad de valores (de menor a mayor):
 #   - Escenario: DEFAULT_TEMPLATE < archivo "template" < bloque "scenario".
 #   - Miembros:  DEFAULT_MEMBER_FIELDS < bloque "member_fields" < campo del grupo.
-#   - Actitud:   sin valor por defecto; cada grupo de objetivos la define con su
-#                bloque "attitude" (las claves antiguas w_deg_s / w_dir dan error).
+#   - Actitud:   sin valor por defecto; cada grupo (objetivos y observadores) la define
+#                con su bloque "attitude".
+#   - Cámara:    cada grupo de observadores puede dar su bloque "camera_mount"; si no,
+#                se usa el montaje por defecto (boresight = +z cuerpo) y se avisa.
 #   - Forma:     sin valor por defecto; cada grupo de objetivos la define con su
 #                bloque "shape" (lo que no se dé se sortea, una vez por miembro).
 # =============================================================================
@@ -164,12 +166,12 @@ const KEY_ORDER = [
     "background_level", "sigma_read_noise", "upper_percentile", "lower_percentage", "los_sigma_arcsec",
     "phi_sun", "glare_angle_deg", "Vref_phong", "Fref_phong",
     "SMA", "ECC", "INC", "RAAN", "AOP", "TA",
-    "attitude", "shape", "obs_dir", "position_sigma_km", "velocity_sigma_km_s",
-    # Dentro de los bloques "attitude" y "shape": primero el tipo y luego sus parámetros
-    "type", "class", "w_deg_s", "w_dir",
+    "attitude", "camera_mount", "shape", "position_sigma_km", "velocity_sigma_km_s",
+    # Dentro de los bloques "attitude", "camera_mount" y "shape": primero el tipo y luego sus parámetros
+    "type", "class", "objective", "w_deg_s", "w_dir", "boresight", "up",
     "x_m", "y_m", "z_m", "thickness_m", "radius_m", "top_radius_m", "height_m", "lc_m",
     "seed", "frame", "q", "euler_deg", "sequence",
-    "primary", "secondary", "body_axis", "target"
+    "primary", "secondary", "roll", "body_axis", "direction"
 ]
 
 # Clave -> posición en KEY_ORDER
@@ -368,62 +370,34 @@ end
 # -----------------------------------------------------------------------------
 
 """
-    resolve_pointing(group, member, name, ctx) -> Vector{Float64}
+    resolve_attitude(group, name, ctx; role="Objective", camera_mount=nothing) -> Dict{String,Any}
 
-Obtiene la dirección de apuntado (`obs_dir`) de un observador usando el
-plugin de apuntado indicado en el bloque `pointing` de su grupo.
-
-# Argumentos
-- `group::AbstractDict`: grupo de la spec al que pertenece el observador.
-- `member::AbstractDict`: elementos orbitales del observador.
-- `name::AbstractString`: nombre del observador, para los mensajes de error.
-- `ctx`: contexto del Builder.
-
-# Devuelve
-- `Vector{Float64}` de 3 componentes.
-
-# Excepciones
-- `ErrorException`: si el grupo no tiene `pointing`, o `pointing` no tiene `type`.
-- `ErrorException`: si el tipo de apuntado no está registrado.
-
-# Ejemplo
-```julia
-group = Dict("pointing" => Dict("type" => "fixed", "dir" => [0, 2, 0]))
-resolve_pointing(group, member, "cam1", ctx)      # [0.0, 1.0, 0.0]
-```
-"""
-function resolve_pointing(group::AbstractDict, member::AbstractDict, name::AbstractString, ctx)
-    haskey(group, "pointing") || error("Observer group for '$name' needs a 'pointing' block.")
-    pspec = group["pointing"]
-    haskey(pspec, "type") || error("'pointing' block without 'type'.")
-    return lookup(POINTINGS, "pointing", String(pspec["type"]))(pspec, member, ctx)
-end
-
-"""
-    resolve_attitude(group, name, ctx) -> Dict{String,Any}
-
-Obtiene el bloque `attitude` de un objetivo a partir de su grupo de la spec y
-lo valida con el mismo código que usa el simulador (`Attitude.parse_attitude`).
+Obtiene el bloque `attitude` de un objetivo u observador a partir de su grupo de la
+spec y lo valida con el mismo código que usa el simulador (`Attitude.parse_attitude`
+y `Attitude.bind_attitude`).
 
 Reglas:
 - El grupo debe tener un bloque `attitude` (mismas reglas que el simulador,
-  ver `Attitude.attitude_block`). Las claves antiguas `w_deg_s` / `w_dir` dan error.
+  ver `Attitude.attitude_block`).
 - Modo `random`: cada miembro recibe su propia semilla, sacada de un flujo
   aleatorio de la spec separado del de las órbitas (cambiar la actitud no altera
   las órbitas aleatorias). Por eso la spec no admite `seed` dentro del bloque.
+- Modo `tracking` (solo observadores): el objetivo debe existir en `ctx.objectives` y
+  `roll.body_axis` no puede ser paralelo al boresight de la cámara.
 
 # Argumentos
-- `group::AbstractDict`: grupo de la spec al que pertenece el objetivo.
-- `name::AbstractString`: nombre del objetivo, para los mensajes de error.
-- `ctx`: contexto del Builder (usa `ctx.rng_attitude`).
+- `group::AbstractDict`: grupo de la spec al que pertenece el miembro.
+- `name::AbstractString`: nombre del miembro, para los mensajes de error.
+- `ctx`: contexto del Builder (usa `ctx.rng_attitude` y, si existe, `ctx.objectives`).
+- `role::AbstractString`: `"Objective"` u `"Observer"`.
+- `camera_mount`: C_cb del observador (de `Attitude.parse_camera_mount`), o `nothing` en los objetivos.
 
 # Devuelve
 - `Dict{String,Any}`: bloque `attitude` listo para el JSON (copia; no modifica la spec).
 
 # Excepciones
-- `ErrorException`: si el grupo no tiene bloque `attitude`, usa las claves antiguas
-  `w_deg_s` / `w_dir` o pone `seed` en un bloque `random`.
-- Cualquier error de validación de `Attitude.parse_attitude`.
+- `ErrorException`: si el grupo no tiene bloque `attitude` o pone `seed` en un bloque `random`.
+- Cualquier error de validación de `Attitude.parse_attitude` o `Attitude.bind_attitude`.
 
 # Ejemplo
 ```julia
@@ -433,19 +407,55 @@ resolve_attitude(Dict("attitude" => Dict("type" => "random")), "deb1", ctx)
 # Dict("type" => "random", "seed" => 2861592718)
 ```
 """
-function resolve_attitude(group::AbstractDict, name::AbstractString, ctx)
-    # Copia del bloque (el mismo grupo da varios miembros); error si falta o usa w_deg_s/w_dir
-    block = attitude_block(group, name)
+function resolve_attitude(group::AbstractDict, name::AbstractString, ctx;
+                          role::AbstractString = "Objective", camera_mount = nothing)
+    # Copia del bloque (el mismo grupo da varios miembros); error si falta
+    block = attitude_block(group, name; role = role)
 
     # random: una semilla distinta por miembro, reproducible con la "seed" de la spec
     if get(block, "type", nothing) == "random"
         haskey(block, "seed") && error(
-            "Objective '$name': do not put 'seed' in a 'random' attitude of a spec; " *
+            "$role '$name': do not put 'seed' in a 'random' attitude of a spec; " *
             "each member gets its own seed from the spec's top-level 'seed'.")
         block["seed"] = Int(rand(ctx.rng_attitude, UInt32))
     end
 
-    parse_attitude(block, name)       # solo valida; el simulador lo volverá a leer del JSON
+    # Solo valida; el simulador lo volverá a leer del JSON. bind_attitude comprueba, p. ej.,
+    # que el objetivo de "tracking" existe (sin trayectorias: aún no se ha propagado nada)
+    spec = parse_attitude(block, name; role = role)
+    names = haskey(ctx, :objectives) ? keys(ctx.objectives) : nothing
+    bind_attitude(spec, (camera_mount = camera_mount, objective_names = names, trajectories = nothing))
+    return block
+end
+
+"""
+    resolve_camera_mount(group, name) -> Dict{String,Any}
+
+Obtiene el bloque `camera_mount` de un observador a partir de su grupo de la spec
+y lo valida con el mismo código que usa el simulador (`Attitude.parse_camera_mount`).
+Si el grupo no lo tiene, se usa el montaje por defecto (boresight = +z cuerpo,
+arriba de la imagen = -y cuerpo) y se avisa; el bloque se escribe en el JSON para
+que siempre quede claro cómo está la cámara.
+
+# Argumentos
+- `group::AbstractDict`: grupo de la spec al que pertenece el observador.
+- `name::AbstractString`: nombre del observador, para los mensajes.
+
+# Devuelve
+- `Dict{String,Any}`: bloque `camera_mount` listo para el JSON (copia; no modifica la spec).
+
+# Excepciones
+- Cualquier error de `Attitude.camera_mount_block` o `Attitude.parse_camera_mount`.
+
+# Ejemplo
+```julia
+resolve_camera_mount(Dict("camera_mount" => Dict("boresight" => [1, 0, 0], "up" => [0, 0, 1])), "cam1")
+resolve_camera_mount(Dict{String,Any}(), "cam1")     # aviso + montaje por defecto
+```
+"""
+function resolve_camera_mount(group::AbstractDict, name::AbstractString)
+    block = deepcopy(camera_mount_block(group, name))   # copia: el mismo grupo da varios miembros
+    parse_camera_mount(block, name)                       # solo valida
     return block
 end
 
@@ -511,7 +521,8 @@ grupo con su patrón, valida los miembros y añade los campos propios del rol.
 # Argumentos
 - `groups::AbstractDict`: grupos de la spec (nombre del grupo -> definición).
 - `ctx`: contexto del Builder (incluye `ctx.member_fields`).
-- `role::Symbol`: `:observer` (añade `obs_dir` y sigmas) u otro valor, que se trata como objetivo (añade `attitude` y `shape`).
+- `role::Symbol`: `:observer` (añade `camera_mount`, `attitude` y sigmas) u otro valor, que se trata como
+  objetivo (añade `attitude` y `shape`).
 
 # Devuelve
 - `Dict{String,Any}`: nombre del miembro -> entrada lista para el JSON.
@@ -521,15 +532,15 @@ grupo con su patrón, valida los miembros y añade los campos propios del rol.
 # Excepciones
 - `ErrorException`: si el patrón no existe o no devuelve miembros.
 - `ErrorException`: si hay nombres duplicados o un miembro no supera la validación.
-- `ErrorException`: si un observador no tiene un bloque `pointing` válido.
-- `ErrorException`: si un objetivo no tiene una actitud válida (ver `resolve_attitude`).
+- `ErrorException`: si un observador tiene un `camera_mount` no válido (ver `resolve_camera_mount`).
+- `ErrorException`: si un miembro no tiene una actitud válida (ver `resolve_attitude`).
 - `ErrorException`: si un objetivo no tiene una forma válida (ver `resolve_member_shape`).
 
 # Ejemplo
 ```julia
 groups = Dict("cam" => Dict(
     "orbit"    => Dict("type" => "GEO", "longitude_deg" => 0.0),
-    "pointing" => Dict("type" => "fixed", "dir" => [0, 1, 0])))
+    "attitude" => Dict("type" => "fixed", "frame" => "ECI", "q" => [1, 0, 0, 0])))
 observers = build_section(groups, ctx, :observer)     # Dict con la clave "cam"
 ```
 """
@@ -557,8 +568,11 @@ function build_section(groups::AbstractDict, ctx, role::Symbol)
             entry = Dict{String,Any}(k => el[k] for k in ELEMENT_KEYS)
 
             if role === :observer
-                # Observadores: apuntado y errores de navegación (el campo del grupo gana al valor general)
-                entry["obs_dir"] = resolve_pointing(group, el, name, ctx)
+                # Observadores: montaje de la cámara, actitud del satélite y errores de navegación
+                # (el campo del grupo gana al valor general)
+                entry["camera_mount"] = resolve_camera_mount(group, name)
+                C_cb = parse_camera_mount(entry["camera_mount"], name)
+                entry["attitude"] = resolve_attitude(group, name, ctx; role = "Observer", camera_mount = C_cb)
                 entry["position_sigma_km"]   = get(group, "position_sigma_km",   ctx.member_fields["position_sigma_km"])
                 entry["velocity_sigma_km_s"] = get(group, "velocity_sigma_km_s", ctx.member_fields["velocity_sigma_km_s"])
             else
@@ -683,7 +697,7 @@ function generate_config(spec::AbstractDict; spec_dir::AbstractString = pwd())
     objectives = build_section(get(spec, "objectives", Dict{String,Any}()), ctx, :objective)
     isempty(objectives) && error("The spec needs at least one objective.")
 
-    # Los apuntados pueden necesitar conocer los objetivos (p. ej. "at_target")
+    # La actitud "tracking" de los observadores necesita conocer los objetivos
     ctx_obs = merge(ctx, (objectives = objectives,))
     observers = build_section(get(spec, "observers", Dict{String,Any}()), ctx_obs, :observer)
     isempty(observers) && error("The spec needs at least one observer.")

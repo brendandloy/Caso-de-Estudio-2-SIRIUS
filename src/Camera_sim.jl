@@ -1,3 +1,21 @@
+# =============================================================================
+# Camera_sim.jl
+#
+# Módulo CameraSim: simulador de la cámara de cada observador (CE3 de I. Ferrando,
+# ampliado con la orientación de la cámara). En cada instante selecciona las estrellas
+# (Hipparcos) y los RSOs dentro del FOV, los proyecta sobre el sensor, renderiza la
+# imagen con PSF gaussiana y ruido, y guarda medidas LOS y posiciones en píxeles.
+#
+# Orientación de la cámara: llega como C_ci (ECI -> cámara) por instante, C_ci = C_cb · C_bi
+# (ver Attitude/Mount.jl). Ejes cámara dextrógiros: x_c derecha de la imagen, y_c abajo,
+# z_c = boresight. Proyección pinhole (= gnomónica TAN) con f = ½·mín(nx, ny)/tan(FOV/2).
+# El FOV es el cono de semiángulo FOV/2 alrededor del boresight (como en el CE3).
+#
+# Funciones principales: load_hipparcos, prefilter_box, filter_cone, radec_to_pixels!,
+# prepare_render_dict, render_psf_gaussian!, ruido (add_*), build_debris_catalog, err_meas!,
+# star_frame, camera_sim! (punto de entrada).
+# =============================================================================
+
 module CameraSim
 
 export camera_sim!
@@ -147,17 +165,48 @@ function filter_cone(stars, boresight_vec, fov_deg::Real)
 end
 
 
+# Píxel que se asigna a una fuente detrás de la cámara (z_c <= 0): queda fuera de la imagen
+const OFF_IMAGE = typemin(Int) ÷ 2
+
+"""
+    radec_to_pixels!(x, y, ra, dec, C_ci, fov_deg, nx, ny) -> Nothing
+
+Proyecta direcciones (RA, Dec) sobre la imagen con el modelo pinhole: se pasa
+cada dirección a ejes cámara con la orientación de la cámara y se divide por z_c.
+
+Modelo (ejes cámara dextrógiros: x_c derecha, y_c abajo, z_c = boresight):
+  ρ_c = C_ci · û_i,   x = c_x + f · x_c/z_c,   y = c_y + f · y_c/z_c,
+con f = ½·mín(nx, ny) / tan(FOV/2) (focal en píxeles, como en el CE3 de I. Ferrando)
+y (c_x, c_y) el centro de la imagen. Es la proyección gnomónica (TAN) sobre el plano
+tangente en el boresight, pero con el giro de la imagen que da la actitud.
+
+# Argumentos
+- `x::Vector{Int}`, `y::Vector{Int}`: salida, columna y fila (1 = arriba a la izquierda).
+- `ra::Vector{Float64}`, `dec::Vector{Float64}`: direcciones en ECI/ICRS (°).
+- `C_ci::AbstractMatrix`: DCM ECI -> cámara en este instante.
+- `fov_deg::Real`: campo de visión (°) sobre el lado menor de la imagen.
+- `nx::Int`, `ny::Int`: resolución (píxeles).
+
+# Devuelve
+- `nothing` (rellena `x` e `y`). Las fuentes detrás de la cámara reciben `OFF_IMAGE`.
+
+# Excepciones
+- `AssertionError`: si los vectores no tienen la misma longitud.
+
+# Ejemplo
+```julia
+x = zeros(Int, 1); y = zeros(Int, 1)
+radec_to_pixels!(x, y, [0.0], [0.0], C_ci, 27, 1024, 1024)    # boresight -> centro (512 o 513)
+```
+"""
 function radec_to_pixels!(x::Vector{Int}, y::Vector{Int},
                           ra::Vector{Float64}, dec::Vector{Float64},
-                          ra0::Real, dec0::Real,
+                          C_ci::AbstractMatrix,
                           fov_deg::Real, nx::Int, ny::Int)
 
     @assert length(x) == length(y) == length(ra) == length(dec)
 
-    # Center in radians
-    α0 = deg2rad(Float64(ra0))
-    δ0 = deg2rad(Float64(dec0))
-    sδ0, cδ0 = sincos(δ0)
+    C = SMatrix{3,3,Float64,9}(C_ci)
 
     # Cone half-angle in radians
     θ = deg2rad(Float64(fov_deg) / 2.0)
@@ -172,42 +221,45 @@ function radec_to_pixels!(x::Vector{Int}, y::Vector{Int},
     cy = (Float64(ny) + 1.0) / 2.0
 
     @inbounds for i in eachindex(ra)
-        α = deg2rad(ra[i])
-        δ = deg2rad(dec[i])
+        # Dirección en ejes cámara
+        ρ = C * radec_to_vec(ra[i], dec[i])
 
-        Δα = wrap_pi(α - α0)
-        sδ, cδ = sincos(δ)
-        sΔα = sin(Δα)
-        cΔα = cos(Δα)
-
-        denom = sδ0*sδ + cδ0*cδ*cΔα
-
-        # Behind tangent plane (shouldn't happen if cone-filtered)
-        if denom <= 0.0
-            x[i] = NaN
-            y[i] = NaN
+        # Detrás del plano imagen (no ocurre si se ha filtrado con el cono)
+        if ρ[3] <= 0.0
+            x[i] = OFF_IMAGE
+            y[i] = OFF_IMAGE
             continue
         end
 
-        # TAN (gnomonic)
-        ξ = (cδ * sΔα) / denom
-        η = (cδ0*sδ - sδ0*cδ*cΔα) / denom
-
-        # Map to pixels (y grows downward)
-        x[i] = round(Int, cx + f * ξ)
-        y[i] = round(Int, cy - f * η)
+        # Pinhole: x hacia la derecha y y hacia abajo, como los índices de la imagen
+        x[i] = round(Int, cx + f * ρ[1] / ρ[3])
+        y[i] = round(Int, cy + f * ρ[2] / ρ[3])
     end
 
     return nothing
 end
 
 
+"""
+    prepare_render_dict(stars, C_ci, fov_deg, nx, ny; mag0=8.0, flux0=20_000.0) -> NamedTuple
 
-function prepare_render_dict(stars::DataFrame, boresight_vec::SVector{3,Float64}, fov_deg::Real,
+Calcula los píxeles y el flujo relativo de una lista de fuentes (estrellas o RSOs)
+para una orientación de la cámara.
+
+# Argumentos
+- `stars::DataFrame`: fuentes con columnas `ra`, `dec` (°) y `mag`.
+- `C_ci::AbstractMatrix`: DCM ECI -> cámara en este instante.
+- `fov_deg::Real`, `nx::Int`, `ny::Int`: campo de visión (°) y resolución.
+- `mag0`, `flux0`: magnitud y flujo de referencia de la escala de flujo.
+
+# Devuelve
+- `(x, y, flux)`: columnas, filas y flujos relativos.
+
+# Excepciones
+- Ninguna.
+"""
+function prepare_render_dict(stars::DataFrame, C_ci::AbstractMatrix, fov_deg::Real,
                            nx::Int, ny::Int; mag0::Real = 8.0, flux0::Real = 20_000.0)
-
-    # Convert camera pointing to RA/Dec center
-    ra0, dec0 = vec_to_radec(boresight_vec)
 
     n = nrow(stars)
 
@@ -218,10 +270,9 @@ function prepare_render_dict(stars::DataFrame, boresight_vec::SVector{3,Float64}
 
     x = Vector{Int}(undef, n)
     y = Vector{Int}(undef, n)
-    flux = Vector{Float64}(undef, n)
 
-    # Project to pixels (implemented in next step)
-    radec_to_pixels!(x, y, ra, dec, ra0, dec0, fov_deg, nx, ny)
+    # Project to pixels with the camera orientation
+    radec_to_pixels!(x, y, ra, dec, C_ci, fov_deg, nx, ny)
 
     # Magnitude -> flux (relative scaling)
     flux = similar(x, Float64)
@@ -487,8 +538,73 @@ end
 
 
 ##################### MAIN ###############################
+
+# Boresight de la cámara en ECI: fila 3 de C_ci (T6: las filas de una DCM son los ejes de llegada)
+boresight_eci(C_ci::AbstractMatrix) = SVector{3,Float64}(C_ci[3, 1], C_ci[3, 2], C_ci[3, 3])
+
+"""
+    star_frame(stars_all, C_ci, config) -> NamedTuple
+
+Estrellas que ve la cámara con una orientación dada: filtro por el cono del
+FOV alrededor del boresight y proyección a píxeles.
+
+Por qué existe: con actitud constante en ECI se llama una sola vez; si la actitud
+cambia, una vez por imagen (las estrellas se mueven en la imagen).
+
+# Argumentos
+- `stars_all::DataFrame`: catálogo Hipparcos ya filtrado por magnitud.
+- `C_ci::AbstractMatrix`: DCM ECI -> cámara en este instante.
+- `config`: `camera_config` (usa `fov_deg`, resoluciones, `mag0` y `flux0`).
+
+# Devuelve
+- `(stars, render)`: estrellas dentro del FOV y su `prepare_render_dict`.
+
+# Excepciones
+- Ninguna.
+"""
+function star_frame(stars_all::DataFrame, C_ci::AbstractMatrix, config)
+    fov = config.fov_deg
+    b = boresight_eci(C_ci)
+    stars = prefilter_box(stars_all, b, fov)
+    stars = filter_cone(stars, b, fov)
+    render = prepare_render_dict(stars, C_ci, fov, config.resolution_x, config.resolution_y;
+        mag0 = config.mag0, flux0 = config.flux0)
+    return (stars = stars, render = render)
+end
+
+"""
+    camera_sim!(data, los_measurements, photometry_data, C_ci, obs_name, obj_names, output_path, config)
+
+Simula la cámara de un observador: en cada instante selecciona las estrellas y
+los RSOs visibles dentro del FOV, los proyecta con la orientación de la cámara,
+genera la imagen (si `image_generation_flag`) y guarda medidas LOS y posiciones
+en píxeles.
+
+La orientación de la cámara llega como C_ci (ECI -> cámara) por instante,
+calculada como C_cb · C_bi (montaje × actitud del satélite). Si es la misma en
+todos los instantes, el campo estelar se calcula una sola vez, como antes; si no,
+se recalcula en cada imagen.
+
+# Argumentos
+- `data::Dict{Symbol,TrajectoryData}`: trayectorias propagadas (ECI, km).
+- `los_measurements`: diccionario de salida con las medidas LOS de cada observador.
+- `photometry_data`: magnitud y visibilidad de cada par (observador, objetivo).
+- `C_ci::AbstractVector`: DCM ECI -> cámara de este observador, una por instante.
+- `obs_name::Symbol`: observador.
+- `obj_names::Vector{Symbol}`: objetivos.
+- `output_path`: carpeta de resultados (se crea `output_path/obs_name/`).
+- `config`: `camera_config` con los flags.
+
+# Devuelve
+- `nothing`. Escribe `debris_positions.csv`, los PNG (si se piden) y
+  `observed_star_catalog.csv` (si `star_csv_flag`; con actitud variable lleva además
+  la columna `image_name`).
+
+# Excepciones
+- `ErrorException`: si `C_ci` no tiene un valor por instante de la trayectoria.
+"""
 function camera_sim!(data::Dict{Symbol,TrajectoryData}, los_measurements::Dict{Symbol, Dict{Symbol, Vector{LOSMeasurement}}}, photometry_data::Dict{Tuple{Symbol,Symbol},NamedTuple},
-    dir::SVector{3,Float64}, obs_name::Symbol, obj_names::Vector{Symbol}, output_path, config)
+    C_ci::AbstractVector, obs_name::Symbol, obj_names::Vector{Symbol}, output_path, config)
 
     path = joinpath(@__DIR__, "..", "data", "I_239_vmag10_reduced.fits")
     outdir = joinpath(output_path, String(obs_name))
@@ -509,31 +625,34 @@ function camera_sim!(data::Dict{Symbol,TrajectoryData}, los_measurements::Dict{S
     # --- Extract trajectories once ---
     obs_traj = data[obs_name]
     obj_trajs = [data[name] for name in obj_names]
+    length(C_ci) == length(obs_traj.r) ||
+        error("camera_sim!: $(length(C_ci)) camera orientations for $(length(obs_traj.r)) time steps of '$obs_name'.")
 
     los_measurements[obs_name] = Dict{Symbol, Vector{LOSMeasurement}}()
 
-    # --- Static setup: fixed per observer ---
-    stars = load_hipparcos(path, config.Vmag_lim)
-    stars = prefilter_box(stars, dir, fov)
-    stars = filter_cone(stars, dir, fov)
-    
-    render = prepare_render_dict( stars, dir, fov, nx, ny;
-        mag0 = config.mag0, flux0 = config.flux0)
-    
-    if config.star_csv_flag
-        star_catalog = DataFrame(
-            x = render.x,
-            y = render.y,
-            Vmag = stars.mag,
-        )
-        CSV.write(joinpath(outdir, "observed_star_catalog.csv"), star_catalog)
+    # --- Catálogo estelar (una vez) y campo estelar ---
+    stars_all = load_hipparcos(path, config.Vmag_lim)
+    static = all(C -> C == C_ci[1], C_ci)          # actitud constante en ECI: mismas estrellas siempre
+    need_stars = config.image_generation_flag || config.star_csv_flag
+
+    # Estrellas en la imagen: columnas x, y, Vmag (+ image_name si la actitud cambia)
+    star_catalog = DataFrame(image_name = String[], x = Int[], y = Int[], Vmag = Float64[])
+
+    if static && need_stars
+        sf = star_frame(stars_all, C_ci[1], config)
+        if config.star_csv_flag
+            CSV.write(joinpath(outdir, "observed_star_catalog.csv"),
+                      DataFrame(x = sf.render.x, y = sf.render.y, Vmag = sf.stars.mag))
+        end
     end
 
     if config.image_generation_flag
-        # Static image: stars + deterministic background
+        # Static image: stars + deterministic background (solo si la actitud es constante)
         img_static = zeros(Float64, ny, nx)
-        render_psf_gaussian!(img_static, render, fov, config.fwhm_deg)
-        add_background!(img_static, config.background_level)
+        if static
+            render_psf_gaussian!(img_static, sf.render, fov, config.fwhm_deg)
+            add_background!(img_static, config.background_level)
+        end
 
         # Working image reused at each frame
         img = similar(img_static)
@@ -542,18 +661,35 @@ function camera_sim!(data::Dict{Symbol,TrajectoryData}, los_measurements::Dict{S
     # --- Time loop ---
     @inbounds for i in eachindex(obs_traj.r)
 
+        C = C_ci[i]                                # orientación de la cámara en este instante
+        b = boresight_eci(C)
+        image_name = replace(string(obs_traj.t[i]), ":" => "", " " => "_") * ".png"
 
         if config.image_generation_flag
-            copyto!(img, img_static)
+            if static
+                copyto!(img, img_static)
+            else
+                # Actitud variable: las estrellas se mueven en la imagen y se pintan de nuevo
+                fill!(img, 0.0)
+                sf = star_frame(stars_all, C, config)
+                render_psf_gaussian!(img, sf.render, fov, config.fwhm_deg)
+                add_background!(img, config.background_level)
+            end
         end
-        image_name = replace(string(obs_traj.t[i]), ":" => "", " " => "_") * ".png"
+
+        if !static && config.star_csv_flag
+            config.image_generation_flag || (sf = star_frame(stars_all, C, config))
+            append!(star_catalog, DataFrame(image_name = fill(image_name, nrow(sf.stars)),
+                                            x = sf.render.x, y = sf.render.y, Vmag = sf.stars.mag))
+        end
+
         r_obs = obs_traj.r[i]
 
         debris = build_debris_catalog(obj_names, obj_trajs, photometry_data, obs_name, r_obs, i)
 
         if nrow(debris) > 0
-            debris_fov = prefilter_box(debris, dir, fov)
-            debris_fov = filter_cone(debris_fov, dir, fov)
+            debris_fov = prefilter_box(debris, b, fov)
+            debris_fov = filter_cone(debris_fov, b, fov)
 
             debris_meas = config.ignore_fov_for_measurements_flag ? debris : debris_fov
 
@@ -565,7 +701,7 @@ function camera_sim!(data::Dict{Symbol,TrajectoryData}, los_measurements::Dict{S
             # image_name identifica el instante aunque no se guarde el PNG
             if nrow(debris_fov) > 0
 
-                render_debris = prepare_render_dict(debris_fov, dir, fov, nx, ny;
+                render_debris = prepare_render_dict(debris_fov, C, fov, nx, ny;
                     mag0 = config.mag0, flux0 = config.flux0)
                     
                 for j in 1:nrow(debris_fov)
@@ -593,6 +729,12 @@ function camera_sim!(data::Dict{Symbol,TrajectoryData}, los_measurements::Dict{S
         end
 
     end
+
+    # Con actitud variable, un único CSV con las estrellas de cada imagen
+    if !static && config.star_csv_flag
+        CSV.write(joinpath(outdir, "observed_star_catalog.csv"), star_catalog)
+    end
+
     # Se escribe siempre (aunque no haya PNG): indica qué RSOs vio la cámara, cuándo y dónde
     CSV.write(joinpath(outdir, "debris_positions.csv"), debris_log; delim=';')
     return nothing

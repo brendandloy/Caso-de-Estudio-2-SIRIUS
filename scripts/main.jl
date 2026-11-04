@@ -10,7 +10,8 @@
 # Pasos:
 #   1. Genera el JSON completo del escenario en config/generated/<nombre de la spec>.json
 #      (si ya existe, se sobrescribe; guarda las semillas usadas, así que se puede repetir).
-#   2. Simula con ese JSON: propagación -> forma y actitud -> fotometría -> cámara -> CSV.
+#   2. Simula con ese JSON: propagación -> forma y actitud de los objetivos -> fotometría ->
+#      actitud de los observadores y orientación de su cámara -> cámara -> CSV.
 # Sin <output_path>, los resultados se escriben en output/<nombre de la spec>/.
 #
 # Funciones:
@@ -86,8 +87,9 @@ function run_simulation(
     los_data = Dict{Symbol, Dict{Symbol, Vector{LOSMeasurement}}}()
         
     for obj_name in env.obj_keys
-        # Actitud según el modo del bloque "attitude" (spin, random, fixed, pointing...)
-        attitude_data[obj_name] = compute_attitude(env.obj_attitude[obj_name], data[obj_name], sun_dir)
+        # Actitud según el modo del bloque "attitude" (spin, random, fixed, pointing...); sin cámara
+        spec = bind_attitude(env.obj_attitude[obj_name], (camera_mount = nothing, objective_names = nothing, trajectories = nothing))
+        attitude_data[obj_name] = compute_attitude(spec, data[obj_name], sun_dir)
         for obs_name in env.obs_keys
             photometry_data[(obs_name, obj_name)] = compute_apparent_magnitude(
                 data[obs_name], data[obj_name], sun_dir,  debris_models[obj_name], env.photometry_config, attitude_data[obj_name].DCM_b2i
@@ -95,8 +97,19 @@ function run_simulation(
         end
     end
 
+    # Trayectorias de los objetivos por su nombre del JSON (sin "obj_"), para el modo "tracking"
+    obj_trajs = Dict(String(k)[length("obj_")+1:end] => data[k] for k in env.obj_keys)
+
     for obs_name in env.obs_keys
-        camera_sim!(data, los_data, photometry_data, env.obs_dir[obs_name], obs_name, env.obj_keys, output_path, env.camera_config)
+        # Actitud del satélite observador; bind_attitude da a "tracking" la cámara y los objetivos
+        C_cb = env.obs_mount[obs_name]
+        spec = bind_attitude(env.obs_attitude[obs_name],
+                             (camera_mount = C_cb, objective_names = keys(obj_trajs), trajectories = obj_trajs))
+        obs_attitude = compute_attitude(spec, data[obs_name], sun_dir)
+
+        # Orientación de la cámara respecto a ECI en cada instante: C_ci = C_cb · C_bi
+        C_ci = camera_dcm_history(C_cb, obs_attitude)
+        camera_sim!(data, los_data, photometry_data, C_ci, obs_name, env.obj_keys, output_path, env.camera_config)
     end
 
     export_data_csvs!(data, los_data, env; output_root=output_path)

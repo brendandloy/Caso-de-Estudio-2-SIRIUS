@@ -3,23 +3,29 @@ module Attitude
 # =============================================================================
 # Módulo Attitude
 #
-# Define la actitud de los objetivos (RSOs) a lo largo de la simulación. Cada
-# objetivo lleva en su JSON un bloque "attitude" con un modo ("type"); el
-# módulo lo lee, lo valida y calcula la historia de la DCM cuerpo -> ECI que
-# usa la fotometría.
+# Define la actitud de los objetivos (RSOs) y de los satélites observadores a lo
+# largo de la simulación. Cada uno lleva en su JSON un bloque "attitude" con un
+# modo ("type"); el módulo lo lee, lo valida y calcula la historia de la DCM
+# cuerpo -> ECI, que usan la fotometría (objetivos) y la cámara (observadores).
 #
 #   "attitude": {"type": "spin",     "w_deg_s": 2.0, "w_dir": [0, 0, 1]}
 #   "attitude": {"type": "random",   "seed": 42}
 #   "attitude": {"type": "fixed",    "frame": "LVLH", "euler_deg": [30, 0, 0], "sequence": "321"}
-#   "attitude": {"type": "pointing", "primary":   {"body_axis": [0, 0, 1], "target": "nadir"},
-#                                    "secondary": {"body_axis": [1, 0, 0], "target": "velocity"}}
+#   "attitude": {"type": "pointing", "primary":   {"body_axis": [0, 0, 1], "direction": "nadir"},
+#                                    "secondary": {"body_axis": [1, 0, 0], "direction": "velocity"}}
+#   "attitude": {"type": "tracking", "objective": "deb1",                       (solo observadores)
+#                                    "roll": {"body_axis": [0, -1, 0], "direction": [0, 0, 1]}}
+#
+# Los observadores llevan además un bloque "camera_mount" (Mount.jl) con el montaje de la
+# cámara en el satélite (C_cb). La orientación de la cámara es C_ci = C_cb · C_bi.
 #
 # Scripts que contiene:
 #   Attitude.jl     : este archivo; tipo base, registro de modos, lectura del bloque y autocarga
 #   Quaternions.jl  : parametrizaciones de actitud (cuaternión, Euler, DCM elementales, sorteo
 #                     uniforme) y propagación del cuaternión paso a paso
 #   Frames.jl       : sistemas y direcciones de referencia (LVLH, nadir, Sol...) y método TRIAD
-#   modes/          : un archivo por modo: fixed.jl, pointing.jl, random.jl, spin.jl
+#   Mount.jl        : montaje de la cámara en el satélite (bloque "camera_mount", C_cb) y C_ci
+#   modes/          : un archivo por modo: fixed.jl, pointing.jl, random.jl, spin.jl, tracking.jl
 #
 # Convenciones (las del tema T6, Attitude Kinematics):
 #   - C_bi: DCM que pasa componentes de ECI a cuerpo (r_b = C_bi r_i). C_ib = C_biᵀ.
@@ -29,12 +35,16 @@ module Attitude
 #     C = C_c(θ3) · C_b(θ2) · C_a(θ1), con C_x, C_y, C_z las matrices elementales del T6.
 #   - Lo que se entrega al simulador es AttitudeData.DCM_b2i = C_ib (cuerpo -> ECI), porque la
 #     fotometría hace n_eci = DCM_b2i · n_body.
+#   - Todos los sistemas de referencia son triedros dextrógiros (T6, diap. 4) y det C = +1 (diap. 17).
 #
 # Contrato de un modo (para añadir uno nuevo basta con crear un archivo en modes/):
 #   1. struct NuevoSpec <: AttitudeSpec ... end                    parámetros ya validados
-#   2. parse_nuevo(b::Dict{String,Any}, name) -> NuevoSpec          lee y valida el bloque
+#   2. parse_nuevo(b::Dict{String,Any}, who) -> NuevoSpec           lee y valida el bloque
+#      (who = "Objective 'deb'" u "Observer 'cam1'", para los mensajes de error)
 #   3. compute_attitude(spec::NuevoSpec, traj, sun_dir) -> AttitudeData
 #   4. register_attitude!("nuevo", parse_nuevo)
+#   5. (opcional) bind_attitude(spec::NuevoSpec, ctx) -> NuevoSpec, si el modo necesita
+#      datos de fuera de su trayectoria (montaje de la cámara, trayectorias de otros objetos)
 #   No hay que tocar nada más: este módulo incluye todos los .jl de modes/.
 #
 # Dependencias: Types (AttitudeData, TrajectoryData) y Parameters
@@ -42,7 +52,8 @@ module Attitude
 # =============================================================================
 
 export AttitudeSpec, register_attitude!, parse_attitude, parse_member_attitude
-export compute_attitude, attitude_block
+export compute_attitude, attitude_block, bind_attitude
+export camera_mount_block, parse_camera_mount, camera_dcm_history
 
 using ..Types: AttitudeData, TrajectoryData
 using ..Parameters: RANDOM_W_RANGE_DEG_S         # rango de |ω| del modo "random" (parámetro maestro)
@@ -211,16 +222,17 @@ end
 # -----------------------------------------------------------------------------
 
 """
-    parse_attitude(block, name) -> AttitudeSpec
+    parse_attitude(block, name; role="Objective") -> AttitudeSpec
 
 Lee y valida un bloque `attitude` con el modo indicado en su campo `type`.
 
 # Argumentos
 - `block::AbstractDict`: bloque `attitude` (de JSON3 o de un `Dict`).
-- `name::AbstractString`: nombre del objetivo, para los mensajes de error.
+- `name::AbstractString`: nombre del objetivo u observador, para los mensajes de error.
+- `role::AbstractString`: `"Objective"` u `"Observer"`; solo cambia el texto de los mensajes.
 
 # Devuelve
-- Un subtipo de `AttitudeSpec` (`SpinSpec`, `RandomSpec`, `FixedSpec`, `PointingSpec`...).
+- Un subtipo de `AttitudeSpec` (`SpinSpec`, `RandomSpec`, `FixedSpec`, `PointingSpec`, `TrackingSpec`...).
 
 # Excepciones
 - `ErrorException`: si el bloque no es un diccionario, no tiene `type` o el modo no existe.
@@ -229,112 +241,67 @@ Lee y valida un bloque `attitude` con el modo indicado en su campo `type`.
 # Ejemplo
 ```julia
 parse_attitude(Dict("type" => "spin", "w_deg_s" => 2, "w_dir" => [0, 0, 1]), "deb")
-# SpinSpec(...)
+parse_attitude(Dict("type" => "fixed", "frame" => "ECI", "q" => [1, 0, 0, 0]), "cam1"; role = "Observer")
 ```
 """
-function parse_attitude(block, name::AbstractString)
+function parse_attitude(block, name::AbstractString; role::AbstractString = "Objective")
+    who = "$role '$name'"                           # p. ej. "Observer 'cam1'"
     b = todict(block)
-    b isa Dict{String,Any} || error("Objective '$name': 'attitude' must be a block {...} (got $(repr(block))).")
-    haskey(b, "type") || error("Objective '$name': 'attitude' block without 'type'.")
+    b isa Dict{String,Any} || error("$who: 'attitude' must be a block {...} (got $(repr(block))).")
+    haskey(b, "type") || error("$who: 'attitude' block without 'type'.")
 
     # El modo se busca en el registro; si no existe se listan los disponibles
     mode = String(b["type"])
     haskey(ATTITUDES, mode) || error(
-        "Objective '$name': unknown attitude type '$mode'. Available: " * join(sort!(collect(keys(ATTITUDES))), ", "))
+        "$who: unknown attitude type '$mode'. Available: " * join(sort!(collect(keys(ATTITUDES))), ", "))
 
-    return ATTITUDES[mode](b, String(name))
+    return ATTITUDES[mode](b, who)
 end
 
 """
-    legacy_to_spin(w_deg_s, w_dir=nothing) -> Dict{String,Any}
+    attitude_block(entry, name; role="Objective") -> Dict{String,Any}
 
-Traduce las claves antiguas `w_deg_s` / `w_dir` a un bloque `attitude` de tipo `spin`.
-
-Por qué existe: `attitude_block` la usa para mostrar, en el mensaje de error, el
-bloque que sustituye a las claves antiguas de un JSON.
-
-# Argumentos
-- `w_deg_s::Real`: velocidad angular (°/s).
-- `w_dir`: eje de giro en ejes cuerpo, o `nothing` si no se dio.
-
-# Devuelve
-- `Dict{String,Any}` con `type = "spin"`, `w_deg_s` y, si se dio, `w_dir`.
-
-# Excepciones
-- Ninguna (la validación la hace `parse_attitude`).
-
-# Ejemplo
-```julia
-legacy_to_spin(0)                  # Dict("type" => "spin", "w_deg_s" => 0)
-legacy_to_spin(30, [1, 0, 0])      # Dict("type" => "spin", "w_deg_s" => 30, "w_dir" => [1, 0, 0])
-```
-"""
-function legacy_to_spin(w_deg_s, w_dir = nothing)
-    block = Dict{String,Any}("type" => "spin", "w_deg_s" => w_deg_s)
-    w_dir === nothing || (block["w_dir"] = collect(w_dir))
-    return block
-end
-
-"""
-    attitude_block(entry, name) -> Dict{String,Any}
-
-Devuelve el bloque `attitude` de un objetivo (del JSON del simulador o de un
-grupo de la spec) tras comprobar que está bien definido. Las claves antiguas
-`w_deg_s` / `w_dir` ya no se aceptan: dan un error que muestra el bloque
-equivalente para copiarlo.
+Devuelve el bloque `attitude` de un objetivo u observador (del JSON del simulador
+o de un grupo de la spec) tras comprobar que existe y es un bloque `{...}`.
 
 Por qué existe: el simulador y el generador aplican exactamente las mismas reglas
 y los mismos mensajes de error.
 
 # Argumentos
-- `entry::AbstractDict`: entrada del objetivo (o grupo de objetivos de la spec).
-- `name::AbstractString`: nombre del objetivo, para los mensajes de error.
+- `entry::AbstractDict`: entrada del miembro (o grupo de la spec).
+- `name::AbstractString`: nombre del miembro, para los mensajes de error.
+- `role::AbstractString`: `"Objective"` u `"Observer"`; solo cambia el texto de los mensajes.
 
 # Devuelve
 - `Dict{String,Any}`: copia del bloque `attitude` (sin validar sus parámetros).
 
 # Excepciones
-- `ErrorException`: si falta el bloque `attitude`, si no es un bloque `{...}` o si
-  aparecen `w_deg_s` / `w_dir` (el mensaje indica cómo convertirlas).
+- `ErrorException`: si falta el bloque `attitude` o si no es un bloque `{...}`.
 
 # Ejemplo
 ```julia
 attitude_block(Dict("attitude" => Dict("type" => "spin", "w_deg_s" => 0)), "deb")
 # Dict("type" => "spin", "w_deg_s" => 0)
-attitude_block(Dict("w_deg_s" => 0, "w_dir" => [1, 0, 0]), "deb")
-# error: ... Replace them with:  "attitude": {"type": "spin", "w_deg_s": 0, "w_dir": [1, 0, 0]}
 ```
 """
-function attitude_block(entry, name::AbstractString)
+function attitude_block(entry, name::AbstractString; role::AbstractString = "Objective")
     e = todict(entry)
-
-    # Formato antiguo: se indica el bloque exacto que hay que escribir
-    if haskey(e, "w_deg_s") || haskey(e, "w_dir")
-        haskey(e, "w_deg_s") || error("Objective '$name': 'w_dir' without 'w_deg_s'; use an 'attitude' block.")
-        block = legacy_to_spin(e["w_deg_s"], get(e, "w_dir", nothing))
-        # Valores escritos como en JSON: textos entre comillas y vectores como [1, 0, 0]
-        fmt(x) = x isa AbstractVector ? "[" * join(fmt.(x), ", ") * "]" :
-                 x isa AbstractString ? "\"$x\"" : string(x)
-        txt = "{" * join(["\"$k\": $(fmt(block[k]))" for k in ("type", "w_deg_s", "w_dir") if haskey(block, k)], ", ") * "}"
-        error("Objective '$name': 'w_deg_s'/'w_dir' are no longer accepted. " *
-              "Replace them with:  \"attitude\": $txt")
-    end
-
     haskey(e, "attitude") || error(
-        "Objective '$name': missing 'attitude' block (e.g. \"attitude\": {\"type\": \"spin\", \"w_deg_s\": 0}).")
-    e["attitude"] isa Dict{String,Any} || error("Objective '$name': 'attitude' must be a block {...}.")
+        "$role '$name': missing 'attitude' block (e.g. \"attitude\": {\"type\": \"spin\", \"w_deg_s\": 0}).")
+    e["attitude"] isa Dict{String,Any} || error("$role '$name': 'attitude' must be a block {...}.")
     return e["attitude"]
 end
 
 """
-    parse_member_attitude(entry, name) -> AttitudeSpec
+    parse_member_attitude(entry, name; role="Objective") -> AttitudeSpec
 
-Lee la actitud de un objetivo del JSON del simulador: comprueba el bloque con
-`attitude_block` y lo valida con `parse_attitude`.
+Lee la actitud de un objetivo u observador del JSON del simulador: comprueba el
+bloque con `attitude_block` y lo valida con `parse_attitude`.
 
 # Argumentos
-- `entry::AbstractDict`: entrada del objetivo en la sección `objectives`.
-- `name::AbstractString`: nombre del objetivo, para los mensajes de error.
+- `entry::AbstractDict`: entrada del miembro en la sección `objectives` u `observers`.
+- `name::AbstractString`: nombre del miembro, para los mensajes de error.
+- `role::AbstractString`: `"Objective"` u `"Observer"`.
 
 # Devuelve
 - Un subtipo de `AttitudeSpec`.
@@ -348,8 +315,8 @@ entry = Dict("SMA" => 7000, "attitude" => Dict("type" => "spin", "w_deg_s" => 0)
 parse_member_attitude(entry, "deb")       # SpinSpec sin giro
 ```
 """
-function parse_member_attitude(entry, name::AbstractString)
-    return parse_attitude(attitude_block(entry, name), name)
+function parse_member_attitude(entry, name::AbstractString; role::AbstractString = "Objective")
+    return parse_attitude(attitude_block(entry, name; role = role), name; role = role)
 end
 
 # -----------------------------------------------------------------------------
@@ -357,14 +324,47 @@ end
 # -----------------------------------------------------------------------------
 
 """
-    compute_attitude(spec, traj, sun_dir) -> AttitudeData
+    bind_attitude(spec, ctx) -> AttitudeSpec
 
-Calcula la historia de la DCM cuerpo -> ECI de un objetivo. Cada modo añade su
-propio método; este es el de reserva, que solo da error.
+Completa un modo con datos que no están en su propia trayectoria: el montaje de
+la cámara o las trayectorias de otros objetos. Se llama antes de
+`compute_attitude`. Este método de reserva no hace nada (devuelve `spec`); los
+modos que lo necesitan (p. ej. `tracking`) definen el suyo.
+
+Por qué existe: así `compute_attitude(spec, traj, sun_dir)` mantiene la misma
+firma en todos los modos y no hay que tocar los modos existentes.
 
 # Argumentos
 - `spec::AttitudeSpec`: actitud leída con `parse_attitude`.
-- `traj::TrajectoryData`: trayectoria del objetivo (r, v en ECI, km y km/s; t en s).
+- `ctx`: `NamedTuple` con
+  - `camera_mount`: C_cb del observador (`SMatrix{3,3}`), o `nothing` si es un objetivo.
+  - `objective_names`: nombres de los objetivos del escenario (para validar), o `nothing`.
+  - `trajectories`: `Dict` nombre del objetivo -> `TrajectoryData`, o `nothing` (generador).
+
+# Devuelve
+- El mismo `spec` o una copia completada.
+
+# Excepciones
+- Las del método de cada modo (p. ej. objetivo inexistente en `tracking`).
+
+# Ejemplo
+```julia
+spec = bind_attitude(spec, (camera_mount = C_cb, objective_names = keys(trajs), trajectories = trajs))
+```
+"""
+function bind_attitude(spec::AttitudeSpec, ctx)
+    return spec
+end
+
+"""
+    compute_attitude(spec, traj, sun_dir) -> AttitudeData
+
+Calcula la historia de la DCM cuerpo -> ECI de un objetivo u observador. Cada
+modo añade su propio método; este es el de reserva, que solo da error.
+
+# Argumentos
+- `spec::AttitudeSpec`: actitud leída con `parse_attitude` (y completada con `bind_attitude`).
+- `traj::TrajectoryData`: trayectoria del satélite (r, v en ECI, km y km/s; t en s).
 - `sun_dir::AbstractVector`: dirección unitaria del Sol en ECI en cada instante de `traj.t`.
 
 # Devuelve
@@ -383,6 +383,7 @@ end
 
 include(joinpath(@__DIR__, "Quaternions.jl"))
 include(joinpath(@__DIR__, "Frames.jl"))
+include(joinpath(@__DIR__, "Mount.jl"))          # montaje de la cámara (C_cb) y C_ci
 
 # Se incluyen todos los .jl de modes/, en orden alfabético
 let dir = joinpath(@__DIR__, "modes")

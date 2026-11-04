@@ -19,7 +19,10 @@
       "pattern": "walker",
       "orbit": {"type": "LEO", "altitude_km": 800, "INC": 55, "RAAN": 0, "TA": 0},
       "walker": {"total": 12, "planes": 3, "phasing": 1, "spread": "delta"},
-      "pointing": {"type": "fixed", "dir": [0.0, 1.0, 0.0]}
+      "attitude": {"type": "pointing",
+                   "primary":   {"body_axis": [0, 0, 1],  "direction": [0.0, 1.0, 0.0]},
+                   "secondary": {"body_axis": [0, -1, 0], "direction": [0, 0, 1]}},
+      "camera_mount": {"boresight": [0, 0, 1], "up": [0, -1, 0]}
     }
   }
 }

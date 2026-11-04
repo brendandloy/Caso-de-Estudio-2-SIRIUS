@@ -49,7 +49,7 @@ junto al nombre del objetivo.
 
 # Argumentos
 - `b::Dict{String,Any}`: bloque `attitude`.
-- `name::AbstractString`: nombre del objetivo, para los mensajes.
+- `name::AbstractString`: miembro que lo usa (p. ej. `"Objective 'deb'"`), para los mensajes.
 
 # Devuelve
 - `RandomSpec`.
@@ -64,7 +64,7 @@ parse_random(Dict{String,Any}("type" => "random", "seed" => 42), "deb")
 ```
 """
 function parse_random(b::Dict{String,Any}, name::AbstractString)
-    who = "Objective '$name' (attitude 'random')"
+    who = "$name (attitude 'random')"
     check_keys(b, RANDOM_KEYS, who)
 
     wmin, wmax = RANDOM_W_RANGE_DEG_S                     # parámetro maestro (°/s)
@@ -77,7 +77,7 @@ function parse_random(b::Dict{String,Any}, name::AbstractString)
     else
         # Sin semilla: se sortea una y se imprime para poder repetir este caso
         seed = Int(rand(RandomDevice(), UInt32))
-        println("Objective '$name': random attitude without 'seed'; using seed = $seed ",
+        println("$name: random attitude without 'seed'; using seed = $seed ",
                 "(add \"seed\": $seed to its 'attitude' block to repeat it).")
     end
 

@@ -31,7 +31,10 @@
       "pattern": "formation",
       "chief": {"type": "LEO", "altitude_km": 621.86, "INC": 90, "RAAN": 0, "TA": 0},
       "layout": {"type": "pco", "n": 3, "radius_km": 1.0, "y_center_km": 0.0},
-      "pointing": {"type": "fixed", "dir": [0.0, 1.0, 0.0]}
+      "attitude": {"type": "pointing",
+                   "primary":   {"body_axis": [0, 0, 1],  "direction": [0.0, 1.0, 0.0]},
+                   "secondary": {"body_axis": [0, -1, 0], "direction": [0, 0, 1]}},
+      "camera_mount": {"boresight": [0, 0, 1], "up": [0, -1, 0]}
     }
   }
 }

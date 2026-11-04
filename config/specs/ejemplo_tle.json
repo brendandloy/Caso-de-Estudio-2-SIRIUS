@@ -19,7 +19,10 @@
   "observers": {
     "cam": {
       "orbit": {"type": "LEO", "altitude_km": 700, "INC": 98.47, "RAAN": 161.9, "TA": 328.0},
-      "pointing": {"type": "fixed", "dir": [0.0, 1.0, 0.0]}
+      "attitude": {"type": "pointing",
+                   "primary":   {"body_axis": [0, 0, 1],  "direction": [0.0, 1.0, 0.0]},
+                   "secondary": {"body_axis": [0, -1, 0], "direction": [0, 0, 1]}},
+      "camera_mount": {"boresight": [0, 0, 1], "up": [0, -1, 0]}
     }
   }
 }

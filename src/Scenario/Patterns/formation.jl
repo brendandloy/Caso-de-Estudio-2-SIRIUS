@@ -8,13 +8,13 @@
 #     "pattern":  "formation",
 #     "chief":    {"type": "LEO", "altitude_km": 620, "INC": 90, "RAAN": 0, "TA": 0},
 #     "layout":   {"type": "along_track", "n": 3, "spacing_km": 10},
-#     "pointing": {"type": "fixed", "dir": [0, 1, 0]}
+#     "attitude": {"type": "fixed", "frame": "ECI", "q": [1, 0, 0, 0]}
 #   }
 #
 # - "chief": bloque "orbit" de cualquier tipo registrado (LEO, SSO, GEO, keplerian...).
 # - "layout": cómo se reparten los miembros (ver carpeta Layouts/).
 # Los miembros se llaman cam1..camN (los nombra el Builder). El resto de campos del
-# grupo (pointing, sigmas, attitude...) se aplican igual a todos los miembros.
+# grupo (attitude, camera_mount, sigmas, shape...) se aplican igual a todos los miembros.
 #
 # Funciones: formation_pattern
 # =============================================================================
