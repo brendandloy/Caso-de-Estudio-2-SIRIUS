@@ -12,6 +12,7 @@ include("Transformations.jl")
 include("Attitude/Attitude.jl")     # actitud de los objetivos; Environment la usa al leer el JSON
 include("Geometry/Geometry.jl")     # forma de los objetivos; la usan el generador y Environment
 include("Scenario/Scenario.jl")     # generador spec -> JSON completo (lo usa scripts/main.jl)
+include("Visibility.jl")          # eclipse, línea de visión y deslumbramiento; la usa Photometry
 include("Environment.jl")
 include("Propagator.jl")
 include("Visualization.jl")
@@ -28,6 +29,7 @@ using .Parameters
 using .Transformations
 using .Attitude
 using .Scenario
+using .Visibility
 using .Environment
 using .Propagator
 using .Visualization

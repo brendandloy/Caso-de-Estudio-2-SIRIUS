@@ -6,11 +6,14 @@ Cambios relevantes de SIRIUS en el Caso de Estudio 2. Formato basado en [Keep a 
 
 ### 2026-11-06
 #### Añadido
+- `src/Visibility.jl` (módulo `Visibility`): eclipse por la Tierra, línea de visión y cono de deslumbramiento solar, con el modelo y las ecuaciones en sus docstrings (`?eclipseEarthECI`, `?losECI`, `?sunGlareConeECI`).
+- `test/test_visibility.jl`: pruebas geométricas calculadas a mano de las tres funciones.
 - `src/JSON_utils.jl` (módulo `JSONUtils`): lectores y validadores comunes de los bloques del JSON (`todict`, `check_keys`, `getnum`, `getvec`, `getunit`), que antes estaban en Attitude y los importaba Geometry, y `get_or_draw_seed` (ver `?get_or_draw_seed`), que lee la semilla de un bloque o sortea una nueva y la imprime. Se carga antes que Attitude; `test_attitude.jl`, `test_geometry.jl` y `generate_config.jl` lo incluyen.
 - `test/test_propagator.jl`: comprueba que la trayectoria propagada tiene los mismos instantes que la malla 0:Δt:T de `scripts/main.jl`.
 - `Constants.DATA_DIR`: ruta única a la carpeta `data/` de la raíz; la usan `scripts/main.jl` (kernels SPICE) y `Camera_sim.jl` (catálogo Hipparcos) en lugar de escribirla cada uno.
 
 #### Cambiado
+- `eclipseEarthECI`, `losECI` y `sunGlareConeECI` pasan de `Environment.jl` a `Visibility.jl`; Photometry las toma de ahí. El resultado no cambia, solo lo que devuelven: `eclipseEarthECI` → `(en_sombra, region)`, `losECI` → `Bool`, `sunGlareConeECI` → `(deslumbrado, angulo_deg)`. `Environment.jl` queda con la lectura de la configuración, SPICE, la dirección del Sol, el error de navegación y la exportación de CSV.
 - Un único `check_keys(b, allowed; who, computed=())` para Attitude, Geometry y Scenario (antes había uno en Attitude con `who` posicional y otro en `Orbital_utils.jl`). Lista todas las claves no admitidas a la vez; el mensaje de las órbitas cambia ligeramente de formato.
 - La semilla de la actitud `random`, de la forma de los objetivos y de la spec se lee con `get_or_draw_seed`; los avisos de semilla sorteada tienen ahora el mismo formato en los tres casos.
 - Las configuraciones heredadas escritas a mano (`config/config*.json`) pasan a `config/legacy/`. `mc_config.json` apunta a `legacy/config _cross_e.json`.
@@ -21,6 +24,7 @@ Cambios relevantes de SIRIUS en el Caso de Estudio 2. Formato basado en [Keep a 
 - `propagate` devolvía un instante de más (el final T) cuando la duración no era múltiplo del paso de salida, y la trayectoria quedaba con una muestra más que la dirección del Sol; la fotometría leía entonces fuera de `sun_dir` sin dar error. Ahora la salida es exactamente 0:Δt:T. Las simulaciones con T múltiplo de Δt no cambian.
 
 #### Eliminado
+- Opción `return_details` de las tres funciones (tupla de diagnóstico con el motivo del bloqueo y las distancias intermedias). No se usaba en ningún sitio; se puede recuperar del historial de git anterior a este cambio.
 - Dependencias sin uso `AstroTime` y `QHull` (la envolvente convexa es propia desde el 2026-11-01).
 - Código sin uso: `wrap_pi` y `add_bias!` (`Camera_sim.jl`), el tipo `StationTrack` (`Types.jl`), `Constants.data_path` (apuntaba a `src/data`, que no existe) y `phi_sun` comentado en `Constants.jl` (la irradiancia se lee de `photometry_config.phi_sun`).
 

@@ -5,7 +5,7 @@ export compute_apparent_magnitude
 using ..Types
 using ..Constants
 using ..Transformations
-using ..Environment
+using ..Visibility      # eclipse, línea de visión y deslumbramiento
 
 using LinearAlgebra
 using Statistics
@@ -82,10 +82,10 @@ end
     u_sun::SVector{3,Float64}, u_n_eci, A, alpha::Float64, C_spec::Float64, C_diff::Float64,
     phot_cfg)
 
-    in_eclipse, _, _ = eclipseEarthECI(r_obj, u_sun)
-    hasLOS, _ = losECI(r_obs, r_obj)
+    in_eclipse, _ = eclipseEarthECI(r_obj, u_sun)
+    hasLOS = losECI(r_obs, r_obj)
     occluded = !hasLOS
-    blinded, _, _ = sunGlareConeECI(u_sun, r_obs, r_obj, phot_cfg.glare_angle_deg)
+    blinded, _ = sunGlareConeECI(u_sun, r_obs, r_obj, phot_cfg.glare_angle_deg)
 
     if in_eclipse || occluded || blinded
         return (Vmag = Inf, 
