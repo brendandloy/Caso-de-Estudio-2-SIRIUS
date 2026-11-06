@@ -55,7 +55,7 @@ end
 
 
 """
-    accel_earth_perturbations(r_eci, t, C, S, θ₀; Nmax=4) -> SVector{3,Float64}
+    accel_earth_perturbations(r_eci, t, C, S, θ₀; Nmax=size(C, 1) - 1) -> SVector{3,Float64}
 
 Aceleración perturbadora del campo gravitatorio terrestre (armónicos de grado
 2 a `Nmax`, sin el término central μ/r²) en ECI, con la recursión de V_nm y W_nm
@@ -70,17 +70,18 @@ Por qué existe: es la parte no kepleriana de la dinámica que integra `propagat
 - `t::Float64`: tiempo desde la época inicial (s).
 - `C`, `S`: coeficientes no normalizados, índice `[n+1, m+1]` (ver `load_coefs_n4`).
 - `θ₀`: ángulo de rotación terrestre en la época inicial (rad, `theta0_from_utc`).
-- `Nmax::Int`: grado máximo; no puede superar el de la tabla `C`, `S`.
+- `Nmax::Int`: grado máximo; por defecto, el de la tabla `C`, `S` (4 con `load_coefs_n4`).
+  Si se añaden coeficientes de más grado, se usan sin cambiar nada más.
 
 # Devuelve
 - `SVector{3,Float64}`: aceleración en ECI (km/s²).
 
 # Excepciones
-- `BoundsError`: si `Nmax` es mayor que el grado de los coeficientes (4 con `load_coefs_n4`).
+- `BoundsError`: si se pasa un `Nmax` mayor que el grado de los coeficientes.
 """
 function accel_earth_perturbations(r_eci::SVector{3,Float64},
                                    t::Float64,
-                                   C, S, θ₀; Nmax::Int = 4)
+                                   C, S, θ₀; Nmax::Int = size(C, 1) - 1)
 
     # --- Rotar ECI → ECEF ---
 

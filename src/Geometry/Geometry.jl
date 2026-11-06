@@ -63,7 +63,7 @@ module Geometry
 # bloques todict, check_keys, getnum, get_or_draw_seed), que deben estar cargados antes.
 # =============================================================================
 
-export ShapeSpec, Debris, register_shape!, shape_block, parse_shape, parse_member_shape
+export ShapeSpec, DebrisModel, register_shape!, shape_block, parse_shape, parse_member_shape
 export resolve_shape, char_length, generate_debris
 
 using ..Parameters
@@ -73,8 +73,36 @@ using LinearAlgebra
 using Random
 using Statistics
 
-# Diccionario que recibe la fotometría (normales, áreas, coeficientes ópticos...)
-const Debris = Dict{Symbol,Any}
+"""
+    DebrisModel
+
+Modelo de un objetivo que recibe la fotometría: forma, facetas en ejes cuerpo y
+propiedades ópticas. Lo crea `generate_debris`.
+
+Por qué existe: con un tipo con campos fijos, Julia conoce el tipo de cada campo
+(antes era un `Dict{Symbol,Any}`) y la fotometría lee `debris.normals` en vez de
+`debris[:normals]`, con errores claros si un campo no existe.
+
+# Campos
+- `shape_name::Symbol`, `dims_m::Dict{String,Float64}`, `char_length_m::Float64`, `seed::Int`.
+- `normals::Matrix{Float64}`: normales unitarias de las facetas (3 × M, ejes cuerpo).
+- `areas::Vector{Float64}`: área de cada faceta (km²); `total_area::Float64` (km²).
+- `C_abs`, `C_spec`, `C_diff`: coeficientes de absorción, reflexión especular y difusa.
+- `alpha::Float64`: exponente especular del modelo de Phong.
+"""
+struct DebrisModel
+    shape_name::Symbol
+    dims_m::Dict{String,Float64}
+    char_length_m::Float64
+    seed::Int
+    normals::Matrix{Float64}      # 3 × M, ejes cuerpo
+    areas::Vector{Float64}        # km²
+    total_area::Float64           # km²
+    C_abs::Float64
+    C_spec::Float64
+    C_diff::Float64
+    alpha::Float64
+end
 
 """
     ShapeSpec(type, dims_m, seed)
@@ -413,7 +441,7 @@ char_length(s::ShapeSpec) = shape_entry(s.type).lc(s.dims_m)
 # -----------------------------------------------------------------------------
 
 """
-    generate_debris(spec::ShapeSpec) -> Debris
+    generate_debris(spec::ShapeSpec) -> DebrisModel
 
 Genera el modelo de un objetivo para la fotometría: malla en ejes cuerpo, normales
 y áreas de las facetas, coeficientes ópticos y exponente especular `alpha`. Todo lo
@@ -424,10 +452,7 @@ spec da siempre el mismo objeto.
 - `spec::ShapeSpec`: forma validada (`parse_shape` o `parse_member_shape`).
 
 # Devuelve
-- `Debris` (`Dict{Symbol,Any}`) con:
-  `:shape_name` (Symbol), `:dims_m`, `:char_length_m`, `:seed`,
-  `:normals` (3 × N, ejes cuerpo), `:areas` (km²), `:total_area` (km²),
-  `:C_abs`, `:C_spec`, `:C_diff` y `:alpha`.
+- `DebrisModel` (ver `?DebrisModel`).
 
 # Excepciones
 - Las de la malla de la forma (p. ej. `calculateNormals` si fuera degenerada).
@@ -436,7 +461,7 @@ spec da siempre el mismo objeto.
 ```julia
 spec = parse_shape(Dict("type" => "sphere", "radius_m" => 0.5, "seed" => 1), "deb")
 d = generate_debris(spec)
-d[:total_area]          # ≈ 4π (0.5e-3)² km²
+d.total_area            # ≈ 4π (0.5e-3)² km²
 ```
 """
 function generate_debris(spec::ShapeSpec)
@@ -452,19 +477,8 @@ function generate_debris(spec::ShapeSpec)
     Cabs, Cspec, Cdiff = entry.optics(rng, spec.dims_m)
     alpha = max(0.1, 1.2 + 0.1 * randn(rng))
 
-    debris = Debris()
-    debris[:shape_name]    = Symbol(spec.type)
-    debris[:dims_m]        = copy(spec.dims_m)
-    debris[:char_length_m] = entry.lc(spec.dims_m)
-    debris[:seed]          = spec.seed
-    debris[:normals]       = normals
-    debris[:areas]         = areas
-    debris[:total_area]    = total_area
-    debris[:C_abs]         = Cabs
-    debris[:C_spec]        = Cspec
-    debris[:C_diff]        = Cdiff
-    debris[:alpha]         = alpha
-    return debris
+    return DebrisModel(Symbol(spec.type), copy(spec.dims_m), entry.lc(spec.dims_m), spec.seed,
+                       normals, areas, total_area, Cabs, Cspec, Cdiff, alpha)
 end
 
 # -----------------------------------------------------------------------------

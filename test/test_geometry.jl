@@ -164,10 +164,10 @@ extents(V) = vec(maximum(V, dims = 1) .- minimum(V, dims = 1))
         for type in vcat(sort!(collect(keys(G.SHAPES))), "random"), seed in 1:5
             s = parse_shape(resolve_shape(Dict("type" => type), "deb"; seed = seed), "deb")
             d = generate_debris(s)
-            @test !any(isnan, d[:normals]) && d[:total_area] > 0
-            @test size(d[:normals], 2) == length(d[:areas])
-            @test d[:C_spec] + d[:C_diff] <= 1 + 1e-12
-            @test generate_debris(s)[:areas] == d[:areas]              # misma semilla, mismo objeto
+            @test !any(isnan, d.normals) && d.total_area > 0
+            @test size(d.normals, 2) == length(d.areas)
+            @test d.C_spec + d.C_diff <= 1 + 1e-12
+            @test generate_debris(s).areas == d.areas                  # misma semilla, mismo objeto
         end
     end
 end

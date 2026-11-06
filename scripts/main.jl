@@ -78,7 +78,7 @@ function run_simulation(
 
 
     # Modelo fotométrico de cada objetivo (malla, áreas y ópticas) según su bloque "shape"
-    debris_models = Dict{Symbol, Dict{Symbol,Any}}()
+    debris_models = Dict{Symbol, DebrisModel}()
     for obj_name in env.obj_keys
         debris_models[obj_name] = generate_debris(env.obj_shape[obj_name])
     end
