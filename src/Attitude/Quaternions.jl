@@ -235,9 +235,9 @@ C = euler_to_dcm(deg2rad.([30, 10, 5]), "321")      # = C_x(5°) C_y(10°) C_z(3
 """
 function euler_to_dcm(angles::AbstractVector, sequence::AbstractString)
     length(angles) == 3 || error("Euler angles: 3 angles needed (got $(length(angles))).")
-    ok = length(sequence) == 3 && all(c -> c in ('1', '2', '3'), sequence) &&
+    is_valid_sequence = length(sequence) == 3 && all(c -> c in ('1', '2', '3'), sequence) &&
          sequence[1] != sequence[2] && sequence[2] != sequence[3]
-    ok || error("Euler sequence must be 3 digits of 1/2/3 with no two consecutive equal, e.g. \"321\" or \"313\" (got \"$sequence\").")
+    is_valid_sequence || error("Euler sequence must be 3 digits of 1/2/3 with no two consecutive equal, e.g. \"321\" or \"313\" (got \"$sequence\").")
 
     ax = [parse(Int, c) for c in sequence]          # ejes en orden de aplicación
     # La primera rotación queda a la derecha: C = C_c(θ3) C_b(θ2) C_a(θ1)

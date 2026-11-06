@@ -90,10 +90,10 @@ function parse_pointing(b::Dict{String,Any}, name::AbstractString)
     norm(cross(b1, b2)) > 1e-8 || error("$who: primary and secondary 'body_axis' are parallel.")
 
     # Direcciones que son paralelas en todo instante (misma dirección con o sin signo)
-    always_parallel = d1.kind === d2.kind && d1.kind !== :inertial ||
+    are_parallel = d1.kind === d2.kind && d1.kind !== :inertial ||
                       (d1.kind === :nadir && d2.kind === :zenith) || (d1.kind === :zenith && d2.kind === :nadir) ||
                       (d1.kind === :inertial && d2.kind === :inertial && norm(cross(d1.vec, d2.vec)) <= 1e-8)
-    always_parallel && error("$who: primary and secondary directions are parallel; choose two different directions.")
+    are_parallel && error("$who: primary and secondary directions are parallel; choose two different directions.")
 
     return PointingSpec(b1, b2, d1, d2)
 end

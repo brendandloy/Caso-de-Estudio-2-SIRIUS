@@ -18,6 +18,7 @@ Cambios relevantes de SIRIUS en el Caso de Estudio 2. Formato basado en [Keep a 
 - `Constants.DATA_DIR`: ruta única a la carpeta `data/` de la raíz; la usan `scripts/main.jl` (kernels SPICE) y `Camera_sim.jl` (catálogo Hipparcos) en lugar de escribirla cada uno.
 
 #### Cambiado
+- Variables y campos booleanos con prefijo `is_`/`has_`: los campos del resultado de `compute_apparent_magnitude` pasan a `is_eclipsed`, `is_occluded`, `is_blinded` e `is_visible` (antes `in_eclipse`, `occluded`, `blinded`, `visible`); el argumento `nav_flag` de `build_state_df` y `build_los_df` pasa a `has_nav_error`, y `meas_flag` de `err_meas!` a `has_meas_error`. Las claves del JSON (`*_flag`, `include_chief`) no cambian.
 - Constantes físicas en mayúsculas (`UPPER_SNAKE_CASE`): `μ` → `MU_EARTH`, `R` → `R_EARTH`, `ω_earth` → `OMEGA_EARTH`, `jd_J2000` → `JD_J2000`, `R_sun` → `R_SUN`, `D_sun` → `D_SUN`, `WGS84_f` → `WGS84_F`. En las ecuaciones de los docstrings se mantienen los símbolos (μ, R, ω⊕).
 - `J2_EARTH` pasa de `Orbital_utils.jl` a `Constants.jl` con el valor de la tabla del propagador (−C20 de EGM2008, 1.0826261739e-3; antes 1.08262668e-3). La inclinación de las órbitas SSO cambia en ~4e-6°; `test_propagator.jl` comprueba que los dos valores coinciden.
 - El paquete pasa a llamarse `SIRIUS` (antes `Project`): `name` de `Project.toml` y módulo raíz `src/SIRIUS.jl` (antes `src/Project.jl`). Se usa con `using SIRIUS`; `scripts/main.jl` ya no añade la raíz al `LOAD_PATH`, porque con `--project=.` el paquete activo es el propio repositorio.

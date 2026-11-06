@@ -80,13 +80,13 @@ const SUN_X = SVector(1.0, 0.0, 0.0)                 # dirección del Sol: +x EC
 
         # Sol a 10° de la línea de visión, con cono de 15°: deslumbrado
         u_sun = SVector(sind(10), cosd(10), 0.0)
-        blinded, ang = sunGlareConeECI(u_sun, r_obs, r_obj, 15.0)
-        @test blinded
+        is_blinded, ang = sunGlareConeECI(u_sun, r_obs, r_obj, 15.0)
+        @test is_blinded
         @test ang ≈ 10.0 atol = 1e-9
 
         # Sol a 90°: no deslumbra
-        blinded, ang = sunGlareConeECI(SUN_X, r_obs, r_obj, 15.0)
-        @test !blinded
+        is_blinded, ang = sunGlareConeECI(SUN_X, r_obs, r_obj, 15.0)
+        @test !is_blinded
         @test ang ≈ 90.0 atol = 1e-9
     end
 end

@@ -310,7 +310,7 @@ function calculateNormals(V::AbstractMatrix{<:Real}, F::AbstractMatrix{<:Integer
     M = size(F, 1)
     normals = zeros(Float64, 3, M)
     areas = zeros(Float64, M)
-    valid = trues(M)                                       # false para triángulos degenerados
+    is_valid = trues(M)                                       # false para triángulos degenerados
     center = vec(mean(V, dims = 1))
 
     for i in 1:M
@@ -331,7 +331,7 @@ function calculateNormals(V::AbstractMatrix{<:Real}, F::AbstractMatrix{<:Integer
 
         # |e1 × e2| despreciable frente a |e1|·|e2|: vértices alineados o repetidos
         if norm(n) <= eps(Float64) * norm(e1) * norm(e2) || iszero(norm(n))
-            valid[i] = false
+            is_valid[i] = false
             continue
         end
 
@@ -347,11 +347,11 @@ function calculateNormals(V::AbstractMatrix{<:Real}, F::AbstractMatrix{<:Integer
         areas[i] = Atri
     end
 
-    ndeg = count(!, valid)
+    ndeg = count(!, is_valid)
     ndeg == M && error("calculateNormals: all $M triangles are degenerate.")
     ndeg > 0 && @warn "calculateNormals: $ndeg degenerate triangle(s) (zero area) discarded."
 
-    return normals[:, valid], areas[valid], sum(areas[valid])
+    return normals[:, is_valid], areas[is_valid], sum(areas[is_valid])
 end
 
 """

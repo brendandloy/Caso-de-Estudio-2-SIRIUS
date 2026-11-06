@@ -317,9 +317,9 @@ function build_rso_state_df(data, obj_keys)
 end
 
 """
-    build_state_df(data, obs_name; nav_flag) -> DataFrame
+    build_state_df(data, obs_name; has_nav_error) -> DataFrame
 
-Tabla con el estado verdadero del observador (`*_true`) y, si `nav_flag`, el estado
+Tabla con el estado verdadero del observador (`*_true`) y, si `has_nav_error`, el estado
 con error de navegación (`*_meas`, trayectoria `nav_<observador>`). ECI, km y km/s.
 
 Por qué existe: es `state_measurements.csv` de cada observador.
@@ -327,15 +327,15 @@ Por qué existe: es `state_measurements.csv` de cada observador.
 # Argumentos
 - `data::Dict{Symbol,TrajectoryData}`: trayectorias propagadas.
 - `obs_name::Symbol`: observador.
-- `nav_flag::Bool`: añadir las columnas con error de navegación.
+- `has_nav_error::Bool`: añadir las columnas con error de navegación.
 
 # Devuelve
 - `DataFrame`.
 
 # Excepciones
-- `KeyError`: si `nav_flag` es `true` y no existe la trayectoria `nav_<observador>`.
+- `KeyError`: si `has_nav_error` es `true` y no existe la trayectoria `nav_<observador>`.
 """
-function build_state_df(data, obs_name; nav_flag::Bool)
+function build_state_df(data, obs_name; has_nav_error::Bool)
     traj = data[obs_name]
     df = DataFrame(
         t = traj.t,
@@ -343,7 +343,7 @@ function build_state_df(data, obs_name; nav_flag::Bool)
         v_x_true = component(traj.v, 1), v_y_true = component(traj.v, 2), v_z_true = component(traj.v, 3)
     )
 
-    if nav_flag
+    if has_nav_error
         nav = data[Symbol("nav_", String(obs_name))]           # misma órbita con error de navegación
         df.r_x_meas = component(nav.r, 1); df.r_y_meas = component(nav.r, 2); df.r_z_meas = component(nav.r, 3)
         df.v_x_meas = component(nav.v, 1); df.v_y_meas = component(nav.v, 2); df.v_z_meas = component(nav.v, 3)
@@ -352,17 +352,17 @@ function build_state_df(data, obs_name; nav_flag::Bool)
 end
 
 """
-    build_los_df(los_meas, obs_name; nav_flag) -> DataFrame
+    build_los_df(los_meas, obs_name; has_nav_error) -> DataFrame
 
 Tabla con las medidas LOS de un observador, objetivo tras objetivo: dirección
-verdadera (ECI, unitaria), magnitud y, si `nav_flag`, la dirección medida con error.
+verdadera (ECI, unitaria), magnitud y, si `has_nav_error`, la dirección medida con error.
 
 Por qué existe: es `los_measurements.csv` de cada observador, la entrada del Kalman.
 
 # Argumentos
 - `los_meas`: medidas de todos los observadores (`camera_sim!`).
 - `obs_name::Symbol`: observador.
-- `nav_flag::Bool`: añadir las columnas `dir_*_meas`.
+- `has_nav_error::Bool`: añadir las columnas `dir_*_meas`.
 
 # Devuelve
 - `DataFrame` (vacío, con las columnas, si el observador no tiene medidas).
@@ -370,7 +370,7 @@ Por qué existe: es `los_measurements.csv` de cada observador, la entrada del Ka
 # Excepciones
 - Ninguna.
 """
-function build_los_df(los_meas, obs_name; nav_flag::Bool)
+function build_los_df(los_meas, obs_name; has_nav_error::Bool)
     meas = haskey(los_meas, obs_name) ? los_meas[obs_name] : Dict{Symbol, Vector{LOSMeasurement}}()
     names = String[String(obj) for (obj, list) in meas for _ in list]
     ms = LOSMeasurement[m for (_, list) in meas for m in list]
@@ -383,7 +383,7 @@ function build_los_df(los_meas, obs_name; nav_flag::Bool)
         Vmag = Float64[m.Vmag for m in ms]
     )
 
-    if nav_flag
+    if has_nav_error
         dir_meas = [m.dir_meas for m in ms]
         df.dir_x_meas = component(dir_meas, 1); df.dir_y_meas = component(dir_meas, 2); df.dir_z_meas = component(dir_meas, 3)
     end
@@ -393,7 +393,7 @@ end
 
 function export_data_csvs!(data, los_meas, env; output_root=joinpath(@__DIR__, "..", "output"))
 
-    nav_flag = env.navigation_error_flag
+    has_nav_error = env.navigation_error_flag
 
     # Common RSO truth file
     rso_df = build_rso_state_df(data, env.obj_keys)
@@ -403,10 +403,10 @@ function export_data_csvs!(data, los_meas, env; output_root=joinpath(@__DIR__, "
         outdir = joinpath(output_root, String(obs_name))
         mkpath(outdir)
 
-        state_df = build_state_df(data, obs_name; nav_flag=nav_flag)
+        state_df = build_state_df(data, obs_name; has_nav_error=has_nav_error)
         CSV.write(joinpath(outdir, "state_measurements.csv"), state_df; delim=';')
 
-        los_df = build_los_df(los_meas, obs_name; nav_flag=nav_flag)
+        los_df = build_los_df(los_meas, obs_name; has_nav_error=has_nav_error)
         CSV.write(joinpath(outdir, "los_measurements.csv"), los_df; delim=';')
     end
 

@@ -76,7 +76,7 @@ end
         d = 1000.0
         res = magnitude(plate((1.0, 0, 0)), d)
         F = PHOT_CFG.phi_sun * (C_DIFF + C_SPEC) * AREA_KM2 / d^2
-        @test res.visible[1]
+        @test res.is_visible[1]
         @test res.Vmag[1] ≈ -12.6988 - 2.5 * log10(F)
 
         # Ley 1/d²: al duplicar la distancia, la magnitud aumenta 5·log10(2) ≈ 1,505
@@ -90,10 +90,10 @@ end
 
         # Faceta de espaldas al Sol y al observador: no se ve
         res = magnitude(plate((-1.0, 0, 0)), 1000.0)
-        @test !res.visible[1] && isinf(res.Vmag[1])
+        @test !res.is_visible[1] && isinf(res.Vmag[1])
 
         # Objetivo detrás de la Tierra (en umbra): no se ve
         res = magnitude(plate((1.0, 0, 0)), 1000.0; r_obj = SVector(-42164.0, 0, 0))
-        @test res.in_eclipse[1] && isinf(res.Vmag[1])
+        @test res.is_eclipsed[1] && isinf(res.Vmag[1])
     end
 end

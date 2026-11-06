@@ -102,15 +102,15 @@ extents(V) = vec(maximum(V, dims = 1) .- minimum(V, dims = 1))
     end
 
     @testset "Bloque shape: lectura y validación" begin
-        ok = Dict("type" => "cylinder", "radius_m" => 1.5, "height_m" => 8.0, "seed" => 1)
-        s = parse_shape(ok, "deb")
+        valid_block = Dict("type" => "cylinder", "radius_m" => 1.5, "height_m" => 8.0, "seed" => 1)
+        s = parse_shape(valid_block, "deb")
         @test s.type == "cylinder" && s.seed == 1 && char_length(s) ≈ (6 + 8) / 3
 
         @test_throws ErrorException shape_block(Dict("SMA" => 7000), "deb")                       # sin shape
         @test_throws ErrorException parse_shape(Dict("type" => "cube", "x_m" => 1), "deb")         # forma desconocida
         @test_throws ErrorException parse_shape(Dict("type" => "cylinder", "radius_m" => 1.0), "deb")   # medidas incompletas
-        @test_throws ErrorException parse_shape(merge(ok, Dict("height_m" => -1.0)), "deb")        # medida negativa
-        @test_throws ErrorException parse_shape(merge(ok, Dict("radio_m" => 1.0)), "deb")          # clave desconocida
+        @test_throws ErrorException parse_shape(merge(valid_block, Dict("height_m" => -1.0)), "deb")        # medida negativa
+        @test_throws ErrorException parse_shape(merge(valid_block, Dict("radio_m" => 1.0)), "deb")          # clave desconocida
         @test_throws ErrorException parse_shape(Dict("type" => "trunk", "radius_m" => 1.0,
             "top_radius_m" => 1.0, "height_m" => 1.0, "seed" => 1), "deb")                        # r superior = R
         @test_throws ErrorException parse_shape(Dict("type" => "plate", "x_m" => 1.0,

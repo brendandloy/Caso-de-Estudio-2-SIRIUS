@@ -102,20 +102,20 @@ function radec_box_square(ra0::Real, dec0::Real, fov_deg::Real)
     dec_max = min(dec_max_raw,  90.0)
 
     # If FOV contains pole
-    pole_cross = (dec_max_raw >= 90.0) || (dec_min_raw <= -90.0)
+    is_pole_in_fov = (dec_max_raw >= 90.0) || (dec_min_raw <= -90.0)
 
     c = cos(deg2rad(dec0))
-    dra = pole_cross ? 180.0 : (half / max(c, 1e-12))  # 180 deg makes RA full-range
+    dra = is_pole_in_fov ? 180.0 : (half / max(c, 1e-12))  # 180 deg makes RA full-range
 
     ra_min = wrap360(ra0 - dra)
     ra_max = wrap360(ra0 + dra)
 
     # If FOV contains RA = 0
-    ra_wrap = ra_min > ra_max 
+    is_ra_wrapped = ra_min > ra_max 
 
     # If RA wraps, use full RA range to keep the output simple
-    ra_min = (pole_cross || ra_wrap) ? 0.0 : ra_min
-    ra_max = (pole_cross || ra_wrap) ? 360.0 : ra_max
+    ra_min = (is_pole_in_fov || is_ra_wrapped) ? 0.0 : ra_min
+    ra_max = (is_pole_in_fov || is_ra_wrapped) ? 360.0 : ra_max
 
     return (ra_min = ra_min, ra_max = ra_max, 
         dec_min = dec_min, dec_max = dec_max)
@@ -144,7 +144,7 @@ function filter_cone(stars, boresight_vec, fov_deg::Real)
     bx, by, bz = boresight_vec
     cos_fov = cos(deg2rad(fov_deg / 2))
 
-    keep = BitVector(undef, nrow(stars))
+    is_in_cone = BitVector(undef, nrow(stars))
 
     for i in 1:nrow(stars)
         # Convert RA/Dec to a unit vector (ICRS)
@@ -157,10 +157,10 @@ function filter_cone(stars, boresight_vec, fov_deg::Real)
         sz = sin(δ)
 
         # Keep star if angular separation <= radius
-        keep[i] = (sx*bx + sy*by + sz*bz) >= cos_fov
+        is_in_cone[i] = (sx*bx + sy*by + sz*bz) >= cos_fov
     end
 
-    return stars[keep, :]
+    return stars[is_in_cone, :]
 end
 
 
@@ -433,7 +433,7 @@ function build_debris_catalog(obj_names::Vector{Symbol}, obj_trajs::Vector{Traje
 
     @inbounds for (obj_name, obj_traj) in zip(obj_names, obj_trajs)
         phot = photometry_data[(obs_name, obj_name)]
-        phot.visible[i] || continue
+        phot.is_visible[i] || continue
 
         m_obj = phot.Vmag[i]
         isfinite(m_obj) || continue
@@ -473,7 +473,7 @@ function perturb_los(u::SVector{3,Float64}, σ_rad::Real)
 end
 
 
-function err_meas!(obs_measurements::Dict{Symbol,Vector{LOSMeasurement}}, debris::DataFrame, t::Float64, los_sigma_arcsec::Real, meas_flag::Bool)
+function err_meas!(obs_measurements::Dict{Symbol,Vector{LOSMeasurement}}, debris::DataFrame, t::Float64, los_sigma_arcsec::Real, has_meas_error::Bool)
 
     σ_los = deg2rad(Float64(los_sigma_arcsec) / 3600.0)
 
@@ -482,7 +482,7 @@ function err_meas!(obs_measurements::Dict{Symbol,Vector{LOSMeasurement}}, debris
         obj_name = debris.obj_name[k]
 
         u_true = radec_to_vec(debris.ra[k], debris.dec[k])
-        u_meas = meas_flag ? perturb_los(u_true, σ_los) : SVector{3,Float64}(NaN, NaN, NaN)
+        u_meas = has_meas_error ? perturb_los(u_true, σ_los) : SVector{3,Float64}(NaN, NaN, NaN)
 
         obj_measurements = get!(obs_measurements, obj_name) do
             LOSMeasurement[]

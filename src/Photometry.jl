@@ -47,7 +47,7 @@ se guarda en las medidas LOS.
 - `DCM_t::Vector{SMatrix{3,3,Float64,9}}`: DCM cuerpo -> ECI del objetivo en cada instante.
 
 # Devuelve
-- `(t, Vmag, in_eclipse, occluded, blinded, visible)`: vectores por instante;
+- `(t, Vmag, is_eclipsed, is_occluded, is_blinded, is_visible)`: vectores por instante;
   `Vmag = Inf` si el objetivo no se ve.
 
 # Excepciones
@@ -59,10 +59,10 @@ function compute_apparent_magnitude(obs_traj::TrajectoryData, obj_traj::Trajecto
     N = length(obs_traj.t)
 
     Vmag       = Vector{Float64}(undef, N)
-    in_eclipse = falses(N)
-    occluded   = falses(N)
-    blinded    = falses(N)
-    visible    = falses(N)
+    is_eclipsed = falses(N)
+    is_occluded   = falses(N)
+    is_blinded    = falses(N)
+    is_visible    = falses(N)
 
     u_n_eci = similar(debris.normals)                 # normales en ECI, reutilizadas en cada instante
 
@@ -75,19 +75,19 @@ function compute_apparent_magnitude(obs_traj::TrajectoryData, obj_traj::Trajecto
                                                 u_n_eci, debris, phot_cfg)
 
         Vmag[k]       = res.Vmag
-        in_eclipse[k] = res.in_eclipse
-        occluded[k]   = res.occluded
-        blinded[k]    = res.blinded
-        visible[k]    = res.visible
+        is_eclipsed[k] = res.is_eclipsed
+        is_occluded[k]   = res.is_occluded
+        is_blinded[k]    = res.is_blinded
+        is_visible[k]    = res.is_visible
     end
 
     return (
         t = obs_traj.t,
         Vmag = Vmag,
-        in_eclipse = in_eclipse,
-        occluded = occluded,
-        blinded = blinded,
-        visible = visible
+        is_eclipsed = is_eclipsed,
+        is_occluded = is_occluded,
+        is_blinded = is_blinded,
+        is_visible = is_visible
     )
 end
 
@@ -110,7 +110,7 @@ reflexión (`_phong_model`).
 - `debris::DebrisModel`, `phot_cfg`: como en `compute_apparent_magnitude`.
 
 # Devuelve
-- `(Vmag, in_eclipse, occluded, blinded, visible)`.
+- `(Vmag, is_eclipsed, is_occluded, is_blinded, is_visible)`.
 
 # Excepciones
 - Ninguna.
@@ -118,17 +118,17 @@ reflexión (`_phong_model`).
 @inline function _compute_apparent_magnitude_epoch(r_obs::SVector{3,Float64}, r_obj::SVector{3,Float64},
     u_sun::SVector{3,Float64}, u_n_eci, debris::DebrisModel, phot_cfg)
 
-    in_eclipse, _ = eclipseEarthECI(r_obj, u_sun)
-    hasLOS = losECI(r_obs, r_obj)
-    occluded = !hasLOS
-    blinded, _ = sunGlareConeECI(u_sun, r_obs, r_obj, phot_cfg.glare_angle_deg)
+    is_eclipsed, _ = eclipseEarthECI(r_obj, u_sun)
+    has_los = losECI(r_obs, r_obj)
+    is_occluded = !has_los
+    is_blinded, _ = sunGlareConeECI(u_sun, r_obs, r_obj, phot_cfg.glare_angle_deg)
 
-    if in_eclipse || occluded || blinded
+    if is_eclipsed || is_occluded || is_blinded
         return (Vmag = Inf, 
-                in_eclipse = in_eclipse, 
-                occluded = occluded,
-                blinded = blinded, 
-                visible = false)
+                is_eclipsed = is_eclipsed, 
+                is_occluded = is_occluded,
+                is_blinded = is_blinded, 
+                is_visible = false)
     end
 
     v_obs = r_obs - r_obj
@@ -138,10 +138,10 @@ reflexión (`_phong_model`).
     Vmag, has_valid_facets = _phong_model(d, u_n_eci, u_sun, u_obs, debris, phot_cfg)
 
     return (Vmag = Vmag, 
-            in_eclipse = false, 
-            occluded = false,
-            blinded = false, 
-            visible = has_valid_facets)
+            is_eclipsed = false, 
+            is_occluded = false,
+            is_blinded = false, 
+            is_visible = has_valid_facets)
 end
 
 """

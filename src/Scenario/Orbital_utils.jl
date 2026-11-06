@@ -383,17 +383,17 @@ function cartesian_to_kepler(r::AbstractVector, v::AbstractVector, mu::Real)
     # Línea de nodos; si es nula la órbita es ecuatorial y se toma el eje x como referencia
     nvec = [-h[2], h[1], 0.0]
     nn = norm(nvec)
-    equatorial = nn < 1e-10 * hn
-    xref = equatorial ? [1.0, 0.0, 0.0] : nvec / nn
-    raan = equatorial ? 0.0 : atan(nvec[2], nvec[1])
+    is_equatorial = nn < 1e-10 * hn
+    xref = is_equatorial ? [1.0, 0.0, 0.0] : nvec / nn
+    raan = is_equatorial ? 0.0 : atan(nvec[2], nvec[1])
     yref = cross(ĥ, xref)
 
     # Ángulo de un vector dentro del plano orbital, medido desde xref
     ang(w) = atan(dot(w, yref), dot(w, xref))
 
-    circular = e < 1e-10
-    aop = circular ? 0.0 : ang(evec)
-    ta  = circular ? ang(r) : ang(r) - aop
+    is_circular = e < 1e-10
+    aop = is_circular ? 0.0 : ang(evec)
+    ta  = is_circular ? ang(r) : ang(r) - aop
 
     return Dict{String,Any}(
         "SMA"  => a,
