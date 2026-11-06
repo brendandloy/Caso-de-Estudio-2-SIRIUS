@@ -182,6 +182,10 @@ function propagate(obj_dict::Dict{Symbol, State}, start_time, sim_time, Δt_out)
     # Coeficientes (no normalizados)
     C, S =  load_coefs_n4() #load_EGM2008_coeffs(Nmax)
 
+    # Misma malla de salida que scripts/main.jl (sun_dir, estaciones). Con saveat escalar el
+    # integrador añadía el instante final aunque no fuera múltiplo de Δt_out (una muestra de más)
+    t_samples = collect(0.0:Δt_out:sim_time)
+
     for (name, state) in obj_dict
             println("Propagating $name...")
 
@@ -200,7 +204,7 @@ function propagate(obj_dict::Dict{Symbol, State}, start_time, sim_time, Δt_out)
             end
 
             # Definición del problema
-            prob = ODEProblem(dynamics, u0, (0.0, sim_time))
+            prob = ODEProblem(dynamics, u0, (0.0, t_samples[end]))   # termina en el último instante de la malla
             sol = solve(prob, Vern9();# Integradores: Tsit5 Vern9 Vern7
                 reltol = 1e-11,                      # Relative error tolerance
                 abstol = 1e-11,                      # Absolute error tolerance
@@ -210,7 +214,7 @@ function propagate(obj_dict::Dict{Symbol, State}, start_time, sim_time, Δt_out)
                 maxiters = 1e7,                      # Maximum number of internal solver iterations
                 adaptive = true,                     # Enables adaptive step-size control
                 dense = false,                       # Enables continuous solution interpolation
-                saveat = Δt_out,                     # Fixed output sampling interval (independent of internal steps)
+                saveat = t_samples,                  # Output instants: exactly the 0:Δt_out:sim_time grid
                 save_everystep = false               # Prevent storing all internal solver steps
             ) 
 

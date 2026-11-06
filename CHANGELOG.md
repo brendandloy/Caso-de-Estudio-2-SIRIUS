@@ -4,6 +4,13 @@ Cambios relevantes de SIRIUS en el Caso de Estudio 2. Formato basado en [Keep a 
 
 ## [Sin publicar]
 
+### 2026-11-06
+#### Añadido
+- `test/test_propagator.jl`: comprueba que la trayectoria propagada tiene los mismos instantes que la malla 0:Δt:T de `scripts/main.jl`.
+
+#### Corregido
+- `propagate` devolvía un instante de más (el final T) cuando la duración no era múltiplo del paso de salida, y la trayectoria quedaba con una muestra más que la dirección del Sol; la fotometría leía entonces fuera de `sun_dir` sin dar error. Ahora la salida es exactamente 0:Δt:T. Las simulaciones con T múltiplo de Δt no cambian.
+
 ### 2026-11-04
 #### Añadido
 - Actitud de los observadores: bloque `attitude` obligatorio en cada observador (spec y JSON del simulador), con los mismos modos que los objetivos. Describe la actitud del satélite.
