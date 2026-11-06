@@ -82,7 +82,7 @@ parse_tracking(b, "Observer 'cam1'")
 """
 function parse_tracking(b::Dict{String,Any}, name::AbstractString)
     who = "$name (attitude 'tracking')"
-    check_keys(b, TRACKING_KEYS, who)
+    check_keys(b, TRACKING_KEYS; who = who)
 
     # Objetivo que se sigue: nombre del miembro en la sección "objectives"
     haskey(b, "objective") || error("$who: missing 'objective' (name of the objective to track).")
@@ -94,7 +94,7 @@ function parse_tracking(b::Dict{String,Any}, name::AbstractString)
     roll = b["roll"]
     roll isa AbstractDict || error("$who: 'roll' must be a block {\"body_axis\": [x, y, z], \"direction\": ...}.")
     w = "$who, 'roll'"
-    check_keys(roll, TRACKING_ROLL_KEYS, w)
+    check_keys(roll, TRACKING_ROLL_KEYS; who = w)
     haskey(roll, "direction") || error("$w: missing 'direction'.")
 
     return TrackingSpec(String(name), String(obj), getunit(roll, "body_axis", w),

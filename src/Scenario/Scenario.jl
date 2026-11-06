@@ -45,6 +45,7 @@ export generate_config, generate_config_file, write_config
 export register_orbit!, register_pattern!, register_layout!
 
 using ..Constants          # μ, R (km), ω_earth (rad/s)
+using ..JSONUtils: check_keys, get_or_draw_seed   # validación de claves y semillas, común a todos los módulos
 using ..Transformations: theta0_from_utc   # misma rotación terrestre (ERA) que el simulador
 using ..Attitude: parse_attitude, attitude_block, bind_attitude   # bloque "attitude" de objetivos y observadores
 using ..Attitude: camera_mount_block, parse_camera_mount          # bloque "camera_mount" de los observadores

@@ -65,7 +65,7 @@ parse_spin(Dict{String,Any}("type" => "spin", "w_deg_s" => 2, "w_dir" => [0, 0, 
 """
 function parse_spin(b::Dict{String,Any}, name::AbstractString)
     who = "$name (attitude 'spin')"
-    check_keys(b, SPIN_KEYS, who)
+    check_keys(b, SPIN_KEYS; who = who)
 
     w = getnum(b, "w_deg_s", who)
 

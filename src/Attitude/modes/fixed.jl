@@ -62,7 +62,7 @@ parse_fixed(Dict{String,Any}("type" => "fixed", "frame" => "LVLH",
 """
 function parse_fixed(b::Dict{String,Any}, name::AbstractString)
     who = "$name (attitude 'fixed')"
-    check_keys(b, FIXED_KEYS, who)
+    check_keys(b, FIXED_KEYS; who = who)
 
     haskey(b, "frame") || error("$who: missing 'frame' (\"ECI\" or \"LVLH\").")
     frame = b["frame"]

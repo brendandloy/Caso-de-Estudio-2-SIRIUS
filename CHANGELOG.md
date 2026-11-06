@@ -6,11 +6,15 @@ Cambios relevantes de SIRIUS en el Caso de Estudio 2. Formato basado en [Keep a 
 
 ### 2026-11-06
 #### Añadido
+- `src/JSON_utils.jl` (módulo `JSONUtils`): lectores y validadores comunes de los bloques del JSON (`todict`, `check_keys`, `getnum`, `getvec`, `getunit`), que antes estaban en Attitude y los importaba Geometry, y `get_or_draw_seed` (ver `?get_or_draw_seed`), que lee la semilla de un bloque o sortea una nueva y la imprime. Se carga antes que Attitude; `test_attitude.jl`, `test_geometry.jl` y `generate_config.jl` lo incluyen.
 - `test/test_propagator.jl`: comprueba que la trayectoria propagada tiene los mismos instantes que la malla 0:Δt:T de `scripts/main.jl`.
 - `Constants.DATA_DIR`: ruta única a la carpeta `data/` de la raíz; la usan `scripts/main.jl` (kernels SPICE) y `Camera_sim.jl` (catálogo Hipparcos) en lugar de escribirla cada uno.
 
 #### Cambiado
+- Un único `check_keys(b, allowed; who, computed=())` para Attitude, Geometry y Scenario (antes había uno en Attitude con `who` posicional y otro en `Orbital_utils.jl`). Lista todas las claves no admitidas a la vez; el mensaje de las órbitas cambia ligeramente de formato.
+- La semilla de la actitud `random`, de la forma de los objetivos y de la spec se lee con `get_or_draw_seed`; los avisos de semilla sorteada tienen ahora el mismo formato en los tres casos.
 - Las configuraciones heredadas escritas a mano (`config/config*.json`) pasan a `config/legacy/`. `mc_config.json` apunta a `legacy/config _cross_e.json`.
+- `axis_angle_rotation` (fórmula de Rodrigues) pasa de `Transformations.jl` a `test/test_attitude.jl`: solo la usan esas pruebas, como solución de referencia independiente de los cuaterniones.
 - Docstring de `accel_earth_perturbations` colocado encima de la función (antes estaba dentro y `?accel_earth_perturbations` no lo mostraba) y con las unidades reales (km, km/s²).
 
 #### Corregido

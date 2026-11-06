@@ -65,21 +65,12 @@ parse_random(Dict{String,Any}("type" => "random", "seed" => 42), "deb")
 """
 function parse_random(b::Dict{String,Any}, name::AbstractString)
     who = "$name (attitude 'random')"
-    check_keys(b, RANDOM_KEYS, who)
+    check_keys(b, RANDOM_KEYS; who = who)
 
     wmin, wmax = RANDOM_W_RANGE_DEG_S                     # parámetro maestro (°/s)
 
-    if haskey(b, "seed")
-        s = b["seed"]
-        (s isa Real && !(s isa Bool) && isinteger(s) && s >= 0) ||
-            error("$who: 'seed' must be an integer >= 0 (got $(repr(s))).")
-        seed = Int(s)
-    else
-        # Sin semilla: se sortea una y se imprime para poder repetir este caso
-        seed = Int(rand(RandomDevice(), UInt32))
-        println("$name: random attitude without 'seed'; using seed = $seed ",
-                "(add \"seed\": $seed to its 'attitude' block to repeat it).")
-    end
+    # Semilla del bloque o una nueva, que se imprime para poder repetir este caso
+    seed = get_or_draw_seed(b, who; hint = "to its 'attitude' block")
 
     return RandomSpec(deg2rad(wmin), deg2rad(wmax), seed)
 end

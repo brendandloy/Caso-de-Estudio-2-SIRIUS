@@ -70,7 +70,7 @@ parse_pointing(b, "sat")
 """
 function parse_pointing(b::Dict{String,Any}, name::AbstractString)
     who = "$name (attitude 'pointing')"
-    check_keys(b, POINTING_KEYS, who)
+    check_keys(b, POINTING_KEYS; who = who)
 
     # Lee un sub-bloque {"body_axis": [...], "direction": ...}
     function read_axis(key)
@@ -78,7 +78,7 @@ function parse_pointing(b::Dict{String,Any}, name::AbstractString)
         sub = b[key]
         sub isa AbstractDict || error("$who: '$key' must be a block {\"body_axis\": [x, y, z], \"direction\": ...}.")
         w = "$who, '$key'"
-        check_keys(sub, POINTING_AXIS_KEYS, w)
+        check_keys(sub, POINTING_AXIS_KEYS; who = w)
         haskey(sub, "direction") || error("$w: missing 'direction'.")
         return getunit(sub, "body_axis", w), parse_direction(sub["direction"], w)
     end

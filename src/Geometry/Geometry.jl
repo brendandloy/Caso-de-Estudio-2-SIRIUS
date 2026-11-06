@@ -59,15 +59,15 @@ module Geometry
 #     optics(rng, d) : (C_abs, C_spec, C_diff) (opcional; por defecto las del cuerpo)
 #
 # Unidades: medidas del bloque en m; mallas en km y áreas en km² (las de la fotometría).
-# Dependencias: Parameters (parámetros maestros de la forma) y Attitude (lectores de
-# bloques todict, check_keys, getnum), que deben estar cargados antes.
+# Dependencias: Parameters (parámetros maestros de la forma) y JSONUtils (lectores de
+# bloques todict, check_keys, getnum, get_or_draw_seed), que deben estar cargados antes.
 # =============================================================================
 
 export ShapeSpec, Debris, register_shape!, shape_block, parse_shape, parse_member_shape
 export resolve_shape, char_length, generate_debris
 
 using ..Parameters
-using ..Attitude: todict, check_keys, getnum      # mismos lectores de bloques que la actitud
+using ..JSONUtils: todict, check_keys, getnum, get_or_draw_seed   # mismos lectores de bloques que la actitud
 
 using LinearAlgebra
 using Random
@@ -239,28 +239,6 @@ function shape_block(entry, name::AbstractString)
     return e["shape"]
 end
 
-"""
-    getseed(b, who) -> Int
-
-Lee la `seed` de un bloque.
-
-# Argumentos
-- `b::AbstractDict`: bloque con la clave `seed`.
-- `who::AbstractString`: texto que identifica el bloque en el mensaje de error.
-
-# Devuelve
-- `Int` >= 0.
-
-# Excepciones
-- `ErrorException`: si `seed` no es un entero >= 0.
-"""
-function getseed(b::AbstractDict, who::AbstractString)
-    s = b["seed"]
-    (s isa Real && !(s isa Bool) && isinteger(s) && s >= 0) ||
-        error("$who: 'seed' must be an integer >= 0 (got $(repr(s))).")
-    return Int(s)
-end
-
 # Medidas que trae el bloque, de entre las de la forma
 given_dims(b::AbstractDict, entry) = [k for k in entry.dims if haskey(b, k)]
 
@@ -296,7 +274,7 @@ function parse_shape(block, name::AbstractString)
     entry = shape_entry(type)
 
     # Claves admitidas y medidas completas
-    check_keys(b, ("type", "class", "seed", entry.dims...), who)
+    check_keys(b, ("type", "class", "seed", entry.dims...); who = who)
     missing_dims = [k for k in entry.dims if !haskey(b, k)]
     isempty(missing_dims) || error("$who: missing $(join(missing_dims, ", ")) " *
         "(give all of $(join(entry.dims, ", ")) or none to draw them at random).")
@@ -315,13 +293,7 @@ function parse_shape(block, name::AbstractString)
         error("$who: unknown 'class' '$(b["class"])'. Available: $(join(SHAPE_CLASSES, ", ")).")
 
     # Semilla de la malla y de las ópticas: la del bloque o una nueva que se imprime
-    if haskey(b, "seed")
-        seed = getseed(b, who)
-    else
-        seed = Int(rand(RandomDevice(), UInt32))
-        println("Objective '$name': shape without 'seed'; using seed = $seed ",
-                "(add \"seed\": $seed to its 'shape' block to repeat it).")
-    end
+    seed = get_or_draw_seed(b, who; hint = "to its 'shape' block")
 
     # Aviso (no error) si es más pequeño que el mínimo de los sorteos
     lc = entry.lc(dims)
@@ -369,7 +341,7 @@ function resolve_shape(block, name::AbstractString; seed::Integer)
 
     if type == "random"
         # Forma y medidas aleatorias según la población real
-        check_keys(b, ("type", "seed"), who)
+        check_keys(b, ("type", "seed"); who = who)
         class = sample_class(rng)
         type = sample_shape_type(rng, class)
         merge!(out, round_dims(sample_dims(rng, type, class)))
@@ -378,7 +350,7 @@ function resolve_shape(block, name::AbstractString; seed::Integer)
         entry = shape_entry(type)
         if isempty(given_dims(b, entry))
             # Forma elegida, medidas aleatorias con el tamaño de su clase
-            check_keys(b, ("type", "seed"), who)
+            check_keys(b, ("type", "seed"); who = who)
             merge!(out, round_dims(sample_dims(rng, type, entry.size_class)))
         else
             # Medidas concretas: se copian (parse_shape avisa si falta alguna)
@@ -427,9 +399,7 @@ function parse_member_shape(entry, name::AbstractString)
 
     if needs_draw
         who = "Objective '$name' (shape '$type')"
-        seed = haskey(b, "seed") ? getseed(b, who) : Int(rand(RandomDevice(), UInt32))
-        haskey(b, "seed") || println("Objective '$name': shape to draw without 'seed'; using seed = $seed ",
-                                     "(add \"seed\": $seed to its 'shape' block to repeat it).")
+        seed = get_or_draw_seed(b, who; hint = "to its 'shape' block")      # semilla del sorteo
         b = resolve_shape(b, name; seed = seed)
     end
     return parse_shape(b, name)

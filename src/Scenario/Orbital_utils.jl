@@ -9,7 +9,6 @@
 #   J2_EARTH, TROPICAL_YEAR_DAYS
 #
 # Funciones:
-#   check_keys              : rechaza claves no admitidas o calculadas.
 #   sma_ecc_from_altitudes  : (altitud) o (perigeo, apogeo) -> (SMA, ECC).
 #   get_aop                 : AOP obligatorio solo si la órbita no es circular.
 #   parse_ltan              : "10:30" / 10.5 -> horas decimales.
@@ -35,52 +34,6 @@ const J2_EARTH = 1.08262668e-3
 
 # Duración del año trópico en días; el nodo de una SSO debe seguir al Sol medio
 const TROPICAL_YEAR_DAYS = 365.2421897
-
-"""
-    check_keys(p, allowed; who="orbit", computed=()) -> Nothing
-
-Comprueba que el bloque `p` solo contiene claves admitidas por el tipo de órbita.
-
-Por qué existe: sin ella, una errata como `"RAAm"` se ignoraría en silencio y el
-plugin usaría otro valor sin avisar. También impide escribir a mano elementos que
-el tipo calcula solo (p. ej. `INC` en una SSO).
-
-# Argumentos
-- `p::AbstractDict`: bloque `orbit` tal como viene de la spec.
-- `allowed`: colección de claves admitidas (incluye `"type"`).
-- `who::AbstractString`: nombre del tipo de órbita, solo para los mensajes de error.
-- `computed`: claves que este tipo calcula por sí mismo; si aparecen, el error lo explica.
-
-# Devuelve
-- `nothing` si todas las claves son válidas.
-
-# Excepciones
-- `ErrorException`: si aparece una clave de `computed` (no se puede fijar a mano).
-- `ErrorException`: si aparece cualquier otra clave que no esté en `allowed`.
-
-# Ejemplo
-```julia
-p = Dict("type" => "GEO", "longitude_deg" => 0.0, "INC" => 0)
-check_keys(p, ("type", "longitude_deg"); who = "GEO", computed = ("INC",))
-# error: 'GEO': 'INC' is fixed/computed by this orbit type and cannot be set. ...
-```
-"""
-function check_keys(p::AbstractDict, allowed; who::AbstractString = "orbit", computed = ())
-    allowed_set  = Set(String.(collect(allowed)))
-    computed_set = Set(String.(collect(computed)))
-
-    for k in keys(p)
-        ks = String(k)                  # las claves pueden ser String o Symbol según el parser
-        ks in allowed_set && continue
-
-        if ks in computed_set
-            error("'$who': '$ks' is fixed/computed by this orbit type and cannot be set. " *
-                  "Use type 'keplerian' if you need to define it manually.")
-        end
-        error("'$who': unknown parameter '$ks'. Allowed: " * join(sort!(collect(allowed_set)), ", "))
-    end
-    return nothing
-end
 
 """
     sma_ecc_from_altitudes(p, ctx; who) -> Tuple{Float64,Float64}

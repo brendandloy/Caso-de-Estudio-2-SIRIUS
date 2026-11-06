@@ -7,6 +7,7 @@ module Project
 include("Types.jl")
 include("Constants.jl")
 include("Parameters.jl")          # parámetros maestros del programa (no los elige el usuario)
+include("JSON_utils.jl")          # lectores y validadores de bloques del JSON; antes que Attitude
 include("Transformations.jl")
 include("Attitude/Attitude.jl")     # actitud de los objetivos; Environment la usa al leer el JSON
 include("Geometry/Geometry.jl")     # forma de los objetivos; la usan el generador y Environment

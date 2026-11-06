@@ -113,6 +113,7 @@ Una clave mal escrita en la spec, en `scenario` o en `member_fields` (p. ej. `"i
     ├── Types.jl            # Tipos de datos (State, TrajectoryData, AttitudeData…)
     ├── Constants.jl        # Constantes físicas (μ, R, ω⊕, WGS84…)
     ├── Parameters.jl       # Parámetros maestros del programa (no los elige el usuario; ver abajo)
+    ├── JSON_utils.jl       # Lectores y validadores comunes de los bloques del JSON (claves, números, semillas)
     ├── Transformations.jl  # Rotaciones y conversiones de sistemas de referencia
     ├── Attitude/           # Actitud de objetivos y observadores y montaje de la cámara (ver abajo)
     │   ├── Attitude.jl       # Tipo base, registro de modos, lectura del bloque "attitude", bind_attitude

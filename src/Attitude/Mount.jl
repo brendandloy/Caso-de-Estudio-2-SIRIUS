@@ -126,7 +126,7 @@ function parse_camera_mount(block, name::AbstractString)
     who = "Observer '$name' (camera_mount)"
     b = todict(block)
     b isa Dict{String,Any} || error("$who: must be a block {...}.")
-    check_keys(b, CAMERA_MOUNT_KEYS, who)
+    check_keys(b, CAMERA_MOUNT_KEYS; who = who)
 
     bs = getunit(b, "boresight", who)
     up = getunit(b, "up", who)

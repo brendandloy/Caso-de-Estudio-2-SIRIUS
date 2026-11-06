@@ -26,6 +26,7 @@ isdefined(Main, :Types)           || include(joinpath(ROOT, "src", "Types.jl"))
 isdefined(Main, :Constants)       || include(joinpath(ROOT, "src", "Constants.jl"))
 isdefined(Main, :Transformations) || include(joinpath(ROOT, "src", "Transformations.jl"))
 isdefined(Main, :Parameters)      || include(joinpath(ROOT, "src", "Parameters.jl"))
+isdefined(Main, :JSONUtils)       || include(joinpath(ROOT, "src", "JSON_utils.jl"))
 isdefined(Main, :Attitude)        || include(joinpath(ROOT, "src", "Attitude", "Attitude.jl"))
 
 using .Types, .Constants, .Transformations, .Parameters, .Attitude

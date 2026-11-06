@@ -47,8 +47,8 @@ module Attitude
 #      datos de fuera de su trayectoria (montaje de la cámara, trayectorias de otros objetos)
 #   No hay que tocar nada más: este módulo incluye todos los .jl de modes/.
 #
-# Dependencias: Types (AttitudeData, TrajectoryData) y Parameters
-# (RANDOM_W_RANGE_DEG_S), que deben estar cargados antes.
+# Dependencias: Types (AttitudeData, TrajectoryData), Parameters (RANDOM_W_RANGE_DEG_S)
+# y JSONUtils (lectores de bloques), que deben estar cargados antes.
 # =============================================================================
 
 export AttitudeSpec, register_attitude!, parse_attitude, parse_member_attitude
@@ -57,6 +57,7 @@ export camera_mount_block, parse_camera_mount, camera_dcm_history
 
 using ..Types: AttitudeData, TrajectoryData
 using ..Parameters: RANDOM_W_RANGE_DEG_S         # rango de |ω| del modo "random" (parámetro maestro)
+using ..JSONUtils     # lectores de bloques: todict, check_keys, getnum, getvec, getunit, get_or_draw_seed
 
 using LinearAlgebra
 using Random
@@ -78,144 +79,6 @@ const ATTITUDES = Dict{String,Function}()
 
 # Registra la función que lee el bloque de un modo; devuelve nothing
 register_attitude!(name::AbstractString, f::Function) = (ATTITUDES[String(name)] = f; nothing)
-
-# -----------------------------------------------------------------------------
-# Helpers de lectura (comunes a todos los modos)
-# -----------------------------------------------------------------------------
-
-"""
-    todict(x)
-
-Convierte recursivamente un objeto JSON en tipos base de Julia: diccionarios a
-`Dict{String,Any}` y vectores a `Vector{Any}`.
-
-Por qué existe: el simulador lee el JSON con JSON3 (claves `Symbol`) y el
-generador con `Dict{String,Any}`. Así los modos leen siempre el mismo tipo.
-
-# Argumentos
-- `x`: diccionario, vector o escalar.
-
-# Devuelve
-- La misma estructura con claves `String`.
-
-# Excepciones
-- Ninguna.
-
-# Ejemplo
-```julia
-todict(JSON3.read("{\\"type\\": \\"spin\\"}"))     # Dict{String,Any}("type" => "spin")
-```
-"""
-function todict(x)
-    x isa AbstractDict   && return Dict{String,Any}(String(k) => todict(v) for (k, v) in x)
-    x isa AbstractVector && return Any[todict(v) for v in x]
-    return x
-end
-
-"""
-    check_keys(b, allowed, who)
-
-Comprueba que un bloque no tiene claves fuera de las admitidas.
-
-Por qué existe: una errata (p. ej. `w_deg` en vez de `w_deg_s`) se ignoraría en
-silencio y la simulación usaría otra actitud sin avisar.
-
-# Argumentos
-- `b::AbstractDict`: bloque leído del JSON.
-- `allowed`: colección de claves admitidas.
-- `who::AbstractString`: texto que identifica el bloque en el mensaje de error.
-
-# Devuelve
-- `nothing`.
-
-# Excepciones
-- `ErrorException`: si aparece alguna clave no admitida.
-
-# Ejemplo
-```julia
-check_keys(Dict("type" => "spin", "w_deg" => 1), ("type", "w_deg_s"), "deb")
-# error: deb: unknown key(s) w_deg. Allowed: type, w_deg_s
-```
-"""
-function check_keys(b::AbstractDict, allowed, who::AbstractString)
-    bad = sort!([k for k in keys(b) if !(k in allowed)])
-    isempty(bad) || error("$who: unknown key(s) $(join(bad, ", ")). Allowed: $(join(allowed, ", "))")
-    return nothing
-end
-
-"""
-    getnum(b, key, who) -> Float64
-
-Lee un número obligatorio de un bloque.
-
-# Argumentos
-- `b::AbstractDict`: bloque leído del JSON.
-- `key::AbstractString`: nombre del parámetro.
-- `who::AbstractString`: texto que identifica el bloque en el mensaje de error.
-
-# Devuelve
-- `Float64`: el valor leído.
-
-# Excepciones
-- `ErrorException`: si falta, no es un número o no es finito.
-"""
-function getnum(b::AbstractDict, key::AbstractString, who::AbstractString)
-    haskey(b, key) || error("$who: missing '$key'.")
-    x = b[key]
-    (x isa Real && !(x isa Bool)) || error("$who: '$key' must be a number (got $(repr(x))).")
-    isfinite(x) || error("$who: '$key' must be finite.")
-    return Float64(x)
-end
-
-"""
-    getvec(b, key, n, who) -> Vector{Float64}
-
-Lee un vector numérico obligatorio de `n` componentes.
-
-# Argumentos
-- `b::AbstractDict`: bloque leído del JSON.
-- `key::AbstractString`: nombre del parámetro.
-- `n::Int`: número de componentes esperado.
-- `who::AbstractString`: texto que identifica el bloque en el mensaje de error.
-
-# Devuelve
-- `Vector{Float64}` de longitud `n`.
-
-# Excepciones
-- `ErrorException`: si falta, no es un vector de `n` números o tiene valores no finitos.
-"""
-function getvec(b::AbstractDict, key::AbstractString, n::Int, who::AbstractString)
-    haskey(b, key) || error("$who: missing '$key'.")
-    v = b[key]
-    (v isa AbstractVector && length(v) == n && all(x -> x isa Real && !(x isa Bool), v)) ||
-        error("$who: '$key' must be a list of $n numbers (got $(repr(v))).")
-    out = Float64.(v)
-    all(isfinite, out) || error("$who: '$key' must have finite values.")
-    return out
-end
-
-"""
-    getunit(b, key, who) -> SVector{3,Float64}
-
-Lee un vector de 3 componentes y lo normaliza.
-
-# Argumentos
-- `b::AbstractDict`: bloque leído del JSON.
-- `key::AbstractString`: nombre del parámetro.
-- `who::AbstractString`: texto que identifica el bloque en el mensaje de error.
-
-# Devuelve
-- `SVector{3,Float64}` unitario.
-
-# Excepciones
-- `ErrorException`: si falta, no tiene 3 componentes o su norma es cero.
-"""
-function getunit(b::AbstractDict, key::AbstractString, who::AbstractString)
-    v = Vec3(getvec(b, key, 3, who))
-    n = norm(v)
-    n > 0 || error("$who: '$key' has zero norm.")
-    return v / n
-end
 
 # -----------------------------------------------------------------------------
 # Lectura del bloque "attitude"

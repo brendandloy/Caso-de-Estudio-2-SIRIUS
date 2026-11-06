@@ -678,13 +678,7 @@ function generate_config(spec::AbstractDict; spec_dir::AbstractString = pwd())
     check_known_keys(member_fields, DEFAULT_MEMBER_FIELDS, "member_fields")
 
     # Semilla de los números aleatorios: la de la spec o una nueva, que se imprime para poder repetir
-    if haskey(spec, "seed")
-        seed = getint(spec, "seed")
-        seed >= 0 || error("'seed' must be >= 0 (got $seed).")
-    else
-        seed = Int(rand(RandomDevice(), UInt32))
-        println("No 'seed' in spec; using seed = $seed (add \"seed\": $seed to the spec to repeat this scenario).")
-    end
+    seed = get_or_draw_seed(spec, "spec"; hint = "to the spec")
 
     # spec_dir permite a los patrones resolver rutas relativas a la spec (p. ej. archivos TLE)
     # rng es el generador aleatorio común a todos los plugins (p. ej. random_LEO)
