@@ -13,7 +13,9 @@
 #
 # Funciones principales: load_hipparcos, prefilter_box, filter_cone, radec_to_pixels!,
 # prepare_render_dict, render_psf_gaussian!, ruido (add_*), build_debris_catalog, err_meas!,
-# star_frame, camera_sim! (punto de entrada).
+# star_frame, camera_sim! (punto de entrada) y sus pasos: setup_star_field, frame_star_field!,
+# start_frame!, paint_star_field!, sky_background, debris_in_view, log_debris!, finish_frame!,
+# frame_name y star_catalog_rows.
 # =============================================================================
 
 module CameraSim
@@ -594,139 +596,305 @@ se recalcula en cada imagen.
 function camera_sim!(data::Dict{Symbol,TrajectoryData}, los_measurements::Dict{Symbol, Dict{Symbol, Vector{LOSMeasurement}}}, photometry_data::Dict{Tuple{Symbol,Symbol},NamedTuple},
     C_ci::AbstractVector, obs_name::Symbol, obj_names::Vector{Symbol}, output_path, config)
 
-    path = joinpath(DATA_DIR, "I_239_vmag10_reduced.fits")
     outdir = joinpath(output_path, String(obs_name))
     mkpath(outdir)
 
-    fov = config.fov_deg
-    nx, ny = config.resolution_x, config.resolution_y
-
-    debris_log = DataFrame(
-        observer_name = String[],
-        debris_name   = String[],
-        image_name    = String[],
-        x_pix         = Int[],
-        y_pix         = Int[],
-        Vmag          = String[]
-    )
-
-    # --- Extract trajectories once ---
+    # --- Trayectorias y medidas de este observador ---
     obs_traj = data[obs_name]
     obj_trajs = [data[name] for name in obj_names]
     length(C_ci) == length(obs_traj.r) ||
         error("camera_sim!: $(length(C_ci)) camera orientations for $(length(obs_traj.r)) time steps of '$obs_name'.")
+    obs_los = los_measurements[obs_name] = Dict{Symbol, Vector{LOSMeasurement}}()
 
-    los_measurements[obs_name] = Dict{Symbol, Vector{LOSMeasurement}}()
-
-    # --- Catálogo estelar (una vez) y campo estelar ---
-    stars_all = load_hipparcos(path, config.Vmag_lim)
-    static = all(C -> C == C_ci[1], C_ci)          # actitud constante en ECI: mismas estrellas siempre
-    need_stars = config.image_generation_flag || config.star_csv_flag
-
-    # Estrellas en la imagen: columnas x, y, Vmag (+ image_name si la actitud cambia)
+    # --- Estrellas e imágenes, y tablas de salida ---
+    sky = setup_star_field(C_ci, outdir, config)
+    debris_log = DataFrame(observer_name = String[], debris_name = String[], image_name = String[],
+                           x_pix = Int[], y_pix = Int[], Vmag = String[])
     star_catalog = DataFrame(image_name = String[], x = Int[], y = Int[], Vmag = Float64[])
 
-    if static && need_stars
-        sf = star_frame(stars_all, C_ci[1], config)
-        if config.star_csv_flag
-            CSV.write(joinpath(outdir, "observed_star_catalog.csv"),
-                      DataFrame(x = sf.render.x, y = sf.render.y, Vmag = sf.stars.mag))
-        end
-    end
-
-    if config.image_generation_flag
-        # Static image: stars + deterministic background (solo si la actitud es constante)
-        img_static = zeros(Float64, ny, nx)
-        if static
-            render_psf_gaussian!(img_static, sf.render, fov, config.fwhm_deg)
-            add_background!(img_static, config.background_level)
-        end
-
-        # Working image reused at each frame
-        img = similar(img_static)
-    end
-
-    # --- Time loop ---
-    @inbounds for i in eachindex(obs_traj.r)
-
+    # --- Bucle temporal: estrellas -> RSOs (medidas, píxeles, PSF) -> ruido y PNG ---
+    for i in eachindex(obs_traj.r)
         C = C_ci[i]                                # orientación de la cámara en este instante
-        b = boresight_eci(C)
-        image_name = replace(string(obs_traj.t[i]), ":" => "", " " => "_") * ".png"
+        image_name = frame_name(obs_traj.t[i])
 
-        if config.image_generation_flag
-            if static
-                copyto!(img, img_static)
-            else
-                # Actitud variable: las estrellas se mueven en la imagen y se pintan de nuevo
-                fill!(img, 0.0)
-                sf = star_frame(stars_all, C, config)
-                render_psf_gaussian!(img, sf.render, fov, config.fwhm_deg)
-                add_background!(img, config.background_level)
-            end
+        star_field = frame_star_field!(star_catalog, sky, C, image_name, config)
+        config.image_generation_flag && start_frame!(sky, star_field, config)
+
+        debris, debris_fov = debris_in_view(obj_names, obj_trajs, photometry_data, obs_name, obs_traj.r[i], i, C, config)
+        debris_meas = config.ignore_fov_for_measurements_flag ? debris : debris_fov
+        nrow(debris_meas) > 0 &&
+            err_meas!(obs_los, debris_meas, obs_traj.t[i], config.los_sigma_arcsec, config.navigation_error_flag)
+        if nrow(debris_fov) > 0
+            render_debris = prepare_render_dict(debris_fov, C, config.fov_deg, config.resolution_x, config.resolution_y;
+                                                mag0 = config.mag0, flux0 = config.flux0)
+            log_debris!(debris_log, obs_name, debris_fov, render_debris, image_name)
+            config.image_generation_flag && render_psf_gaussian!(sky.img, render_debris, config.fov_deg, config.fwhm_deg)
         end
 
-        if !static && config.star_csv_flag
-            config.image_generation_flag || (sf = star_frame(stars_all, C, config))
-            append!(star_catalog, DataFrame(image_name = fill(image_name, nrow(sf.stars)),
-                                            x = sf.render.x, y = sf.render.y, Vmag = sf.stars.mag))
-        end
-
-        r_obs = obs_traj.r[i]
-
-        debris = build_debris_catalog(obj_names, obj_trajs, photometry_data, obs_name, r_obs, i)
-
-        if nrow(debris) > 0
-            debris_fov = prefilter_box(debris, b, fov)
-            debris_fov = filter_cone(debris_fov, b, fov)
-
-            debris_meas = config.ignore_fov_for_measurements_flag ? debris : debris_fov
-
-            if nrow(debris_meas) > 0
-                err_meas!(los_measurements[obs_name], debris_meas, obs_traj.t[i], config.los_sigma_arcsec, config.navigation_error_flag)
-            end
-
-            # Posiciones en píxeles de los RSOs en el FOV: se registran siempre (debris_positions.csv);
-            # image_name identifica el instante aunque no se guarde el PNG
-            if nrow(debris_fov) > 0
-
-                render_debris = prepare_render_dict(debris_fov, C, fov, nx, ny;
-                    mag0 = config.mag0, flux0 = config.flux0)
-                    
-                for j in 1:nrow(debris_fov)
-                    push!(debris_log, (
-                        observer_name = String(obs_name),
-                        debris_name   = String(debris_fov.obj_name[j]),
-                        image_name    = image_name,
-                        x_pix         = render_debris.x[j],
-                        y_pix         = render_debris.y[j],
-                        Vmag          = replace(string(round(debris_fov.mag[j], digits = 3)), "." => ",")
-                    ))
-                end
-
-                # Solo se pintan en la imagen si se generan los PNG
-                if config.image_generation_flag
-                    render_psf_gaussian!(img, render_debris, fov, config.fwhm_deg)
-                end
-            end
-        end
-
-        if config.image_generation_flag
-            add_poisson_noise!(img)
-            add_read_noise!(img, config.sigma_read_noise)
-            save_frame(img, image_name, outdir, config)
-        end
-
+        config.image_generation_flag && finish_frame!(sky.img, image_name, outdir, config)
     end
 
     # Con actitud variable, un único CSV con las estrellas de cada imagen
-    if !static && config.star_csv_flag
-        CSV.write(joinpath(outdir, "observed_star_catalog.csv"), star_catalog)
-    end
+    !sky.is_static && config.star_csv_flag && CSV.write(joinpath(outdir, "observed_star_catalog.csv"), star_catalog)
 
     # Se escribe siempre (aunque no haya PNG): indica qué RSOs vio la cámara, cuándo y dónde
     CSV.write(joinpath(outdir, "debris_positions.csv"), debris_log; delim=';')
     return nothing
-    
+end
+
+# Nombre del PNG de un instante t (s): "120.0.png"
+frame_name(t) = replace(string(t), ":" => "", " " => "_") * ".png"
+
+# Filas de observed_star_catalog.csv para un campo estelar: píxel (x, y) y magnitud de cada estrella
+star_catalog_rows(star_field) = DataFrame(x = star_field.render.x, y = star_field.render.y, Vmag = star_field.stars.mag)
+
+"""
+    setup_star_field(C_ci, outdir, config) -> NamedTuple
+
+Prepara lo que la cámara necesita de las estrellas antes del bucle temporal: carga
+el catálogo Hipparcos y, si la actitud es constante en ECI, calcula una sola vez el
+campo estelar, su imagen de fondo y `observed_star_catalog.csv`.
+
+Por qué existe: con actitud constante las estrellas no se mueven en la imagen y no
+hace falta recalcularlas en cada instante; con actitud variable se recalculan en
+`frame_star_field!`.
+
+# Argumentos
+- `C_ci::AbstractVector`: DCM ECI -> cámara en cada instante.
+- `outdir::AbstractString`: carpeta del observador.
+- `config`: `camera_config` con los flags.
+
+# Devuelve
+- `(stars_all, is_static, needs_stars, field, img_static, img)`: catálogo, si la
+  actitud es constante, si hacen falta estrellas (PNG o CSV), campo estático (o
+  `nothing`), imagen de fondo e imagen de trabajo (`nothing` si no se generan PNG).
+
+# Excepciones
+- Las de lectura del catálogo FITS (`load_hipparcos`).
+"""
+function setup_star_field(C_ci::AbstractVector, outdir::AbstractString, config)
+    stars_all = load_hipparcos(joinpath(DATA_DIR, "I_239_vmag10_reduced.fits"), config.Vmag_lim)
+    is_static = all(C -> C == C_ci[1], C_ci)                   # actitud constante en ECI
+    needs_stars = config.image_generation_flag || config.star_csv_flag
+
+    field = is_static && needs_stars ? star_frame(stars_all, C_ci[1], config) : nothing
+    field !== nothing && config.star_csv_flag &&
+        CSV.write(joinpath(outdir, "observed_star_catalog.csv"), star_catalog_rows(field))
+
+    img_static = config.image_generation_flag ? sky_background(field, config) : nothing
+    img = config.image_generation_flag ? similar(img_static) : nothing    # imagen de trabajo, reutilizada
+    return (stars_all = stars_all, is_static = is_static, needs_stars = needs_stars,
+            field = field, img_static = img_static, img = img)
+end
+
+"""
+    frame_star_field!(star_catalog, sky, C_ci, image_name, config) -> Union{NamedTuple, Nothing}
+
+Campo estelar de un instante: el estático de `setup_star_field` o, con actitud
+variable, uno nuevo con la orientación de la cámara, cuyas estrellas se añaden a
+`star_catalog` (si `star_csv_flag`).
+
+Por qué existe: separa del bucle de `camera_sim!` la diferencia entre actitud
+constante y variable.
+
+# Argumentos
+- `star_catalog::DataFrame`: estrellas de cada imagen (actitud variable); se modifica.
+- `sky`: salida de `setup_star_field`.
+- `C_ci::AbstractMatrix`: DCM ECI -> cámara en este instante.
+- `image_name::AbstractString`: imagen del instante.
+- `config`: `camera_config`.
+
+# Devuelve
+- El campo estelar (`star_frame`), o `nothing` si no hacen falta estrellas.
+
+# Excepciones
+- Ninguna.
+"""
+function frame_star_field!(star_catalog::DataFrame, sky, C_ci::AbstractMatrix, image_name::AbstractString, config)
+    (sky.is_static || !sky.needs_stars) && return sky.field
+    field = star_frame(sky.stars_all, C_ci, config)
+    if config.star_csv_flag
+        rows = star_catalog_rows(field)
+        insertcols!(rows, 1, :image_name => fill(image_name, nrow(rows)))   # primera columna: imagen
+        append!(star_catalog, rows)
+    end
+    return field
+end
+
+"""
+    start_frame!(sky, star_field, config) -> Nothing
+
+Deja en la imagen de trabajo `sky.img` las estrellas y el fondo del instante: copia
+la imagen de fondo con actitud constante, o la pinta de nuevo con actitud variable.
+
+Por qué existe: es el primer paso de cada imagen en `camera_sim!`, antes de los RSOs.
+
+# Argumentos
+- `sky`: salida de `setup_star_field` (con `img` e `img_static`).
+- `star_field`: campo estelar del instante (`frame_star_field!`).
+- `config`: `camera_config`.
+
+# Devuelve
+- `nothing`.
+
+# Excepciones
+- Ninguna.
+"""
+function start_frame!(sky, star_field, config)
+    if sky.is_static
+        copyto!(sky.img, sky.img_static)
+    else
+        fill!(sky.img, 0.0)
+        paint_star_field!(sky.img, star_field, config)
+    end
+    return nothing
+end
+
+"""
+    paint_star_field!(img, star_field, config) -> Nothing
+
+Pinta en `img` las estrellas de `star_field` con la PSF gaussiana y suma el fondo
+de cielo uniforme.
+
+Por qué existe: es lo mismo con actitud constante (una vez) y variable (en cada imagen).
+
+# Argumentos
+- `img::Matrix{Float64}`: imagen (ny × nx); se modifica.
+- `star_field`: salida de `star_frame`.
+- `config`: `camera_config` (usa `fov_deg`, `fwhm_deg`, `background_level`).
+
+# Devuelve
+- `nothing`.
+
+# Excepciones
+- Ninguna.
+"""
+function paint_star_field!(img::Matrix{Float64}, star_field, config)
+    render_psf_gaussian!(img, star_field.render, config.fov_deg, config.fwhm_deg)
+    add_background!(img, config.background_level)
+    return nothing
+end
+
+"""
+    sky_background(star_field, config) -> Matrix{Float64}
+
+Imagen de partida de cada instante con actitud constante en ECI: estrellas y fondo
+de cielo, que no cambian entre imágenes. Con actitud variable (`star_field = nothing`)
+devuelve una imagen vacía, que solo sirve de molde para la imagen de trabajo.
+
+Por qué existe: con actitud constante el campo estelar se pinta una sola vez y en
+cada instante se copia, en lugar de recalcularlo.
+
+# Argumentos
+- `star_field`: salida de `star_frame`, o `nothing` si la actitud cambia.
+- `config`: `camera_config` (resolución, `fov_deg`, `fwhm_deg`, `background_level`).
+
+# Devuelve
+- `Matrix{Float64}` de tamaño `resolution_y × resolution_x`.
+
+# Excepciones
+- Ninguna.
+"""
+function sky_background(star_field, config)
+    img = zeros(Float64, config.resolution_y, config.resolution_x)
+    star_field === nothing || paint_star_field!(img, star_field, config)
+    return img
+end
+
+"""
+    debris_in_view(obj_names, obj_trajs, photometry_data, obs_name, r_obs, i, C_ci, config) -> (DataFrame, DataFrame)
+
+RSOs visibles desde el observador en el instante `i` (iluminados, en LOS y sin
+deslumbramiento, según la fotometría) y, de ellos, los que caen en el FOV de la cámara.
+
+Por qué existe: separa la selección de RSOs del bucle de `camera_sim!`.
+
+# Argumentos
+- `obj_names`, `obj_trajs`: objetivos y sus trayectorias.
+- `photometry_data`: magnitud y visibilidad de cada par (observador, objetivo).
+- `obs_name::Symbol`, `r_obs::SVector{3,Float64}`: observador y su posición (ECI, km).
+- `i::Int`: índice del instante.
+- `C_ci::AbstractMatrix`: DCM ECI -> cámara en este instante.
+- `config`: `camera_config` (usa `fov_deg`).
+
+# Devuelve
+- `(debris, debris_fov)`: tablas con `obj_name`, `ra`, `dec` (°) y `mag`.
+
+# Excepciones
+- Ninguna.
+"""
+function debris_in_view(obj_names, obj_trajs, photometry_data, obs_name::Symbol, r_obs::SVector{3,Float64},
+                        i::Int, C_ci::AbstractMatrix, config)
+    debris = build_debris_catalog(obj_names, obj_trajs, photometry_data, obs_name, r_obs, i)
+    nrow(debris) == 0 && return debris, debris
+
+    b = boresight_eci(C_ci)
+    debris_fov = filter_cone(prefilter_box(debris, b, config.fov_deg), b, config.fov_deg)
+    return debris, debris_fov
+end
+
+"""
+    log_debris!(debris_log, obs_name, debris_fov, render_debris, image_name) -> Nothing
+
+Añade a `debris_log` una fila por RSO en el FOV: observador, objetivo, imagen,
+píxel (x, y) y magnitud (texto con 3 decimales y coma decimal).
+
+Por qué existe: es el contenido de `debris_positions.csv`; separa su formato del bucle.
+
+# Argumentos
+- `debris_log::DataFrame`: tabla de salida; se modifica.
+- `obs_name::Symbol`: observador.
+- `debris_fov::DataFrame`: RSOs en el FOV (`debris_in_view`).
+- `render_debris`: sus píxeles (`prepare_render_dict`).
+- `image_name::AbstractString`: imagen (instante) a la que corresponden.
+
+# Devuelve
+- `nothing`.
+
+# Excepciones
+- Ninguna.
+"""
+function log_debris!(debris_log::DataFrame, obs_name::Symbol, debris_fov::DataFrame, render_debris,
+                     image_name::AbstractString)
+    for j in 1:nrow(debris_fov)
+        push!(debris_log, (
+            observer_name = String(obs_name),
+            debris_name   = String(debris_fov.obj_name[j]),
+            image_name    = image_name,
+            x_pix         = render_debris.x[j],
+            y_pix         = render_debris.y[j],
+            Vmag          = replace(string(round(debris_fov.mag[j], digits = 3)), "." => ",")
+        ))
+    end
+    return nothing
+end
+
+"""
+    finish_frame!(img, image_name, outdir, config) -> Nothing
+
+Termina la imagen de un instante: le añade ruido de Poisson (fotones) y de lectura
+del sensor y la guarda como PNG en `outdir`.
+
+Por qué existe: es el último paso de cada imagen en `camera_sim!`, después de pintar
+estrellas y RSOs.
+
+# Argumentos
+- `img::Matrix{Float64}`: imagen sin ruido; se modifica.
+- `image_name::AbstractString`: nombre del PNG (instante).
+- `outdir::AbstractString`: carpeta del observador.
+- `config`: `camera_config` (usa `sigma_read_noise` y los percentiles de `save_frame`).
+
+# Devuelve
+- `nothing`.
+
+# Excepciones
+- Las de escritura del PNG (carpeta sin permisos, disco lleno).
+"""
+function finish_frame!(img::Matrix{Float64}, image_name::AbstractString, outdir::AbstractString, config)
+    add_poisson_noise!(img)
+    add_read_noise!(img, config.sigma_read_noise)
+    save_frame(img, image_name, outdir, config)
+    return nothing
 end
 
 end # module CameraSim

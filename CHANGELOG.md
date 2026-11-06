@@ -16,6 +16,8 @@ Cambios relevantes de SIRIUS en el Caso de Estudio 2. Formato basado en [Keep a 
 - `Constants.DATA_DIR`: ruta única a la carpeta `data/` de la raíz; la usan `scripts/main.jl` (kernels SPICE) y `Camera_sim.jl` (catálogo Hipparcos) en lugar de escribirla cada uno.
 
 #### Cambiado
+- Funciones largas divididas en pasos con su docstring, sin cambiar resultados: `camera_sim!` (en `setup_star_field`, `frame_star_field!`, `start_frame!`, `paint_star_field!`, `sky_background`, `debris_in_view`, `log_debris!`, `finish_frame!`, `frame_name` y `star_catalog_rows`), `load_config` (en `parse_objectives!`, `parse_observers!`, `camera_settings` y `print_config_summary`), `build_section` (en `member_name` y `build_member`) y `generate_config` (en `scenario_defaults` y `generator_context`).
+- `build_rso_state_df`, `build_state_df` y `build_los_df` construyen las tablas por columnas en lugar de fila a fila; mismas columnas y mismo orden en los CSV.
 - `scripts/main.jl` queda como lanzador: carga el paquete y, desde la terminal, lee los argumentos y llama a `run_spec`. `include("scripts/main.jl")` sigue dejando disponibles `run_spec` y `run_simulation` (lanzador de VS Code, REPL, `benchmark.jl`, `MonteCarlo.jl`).
 - `generate_debris` devuelve un `DebrisModel` en lugar de un `Dict{Symbol,Any}`: los campos se leen como `debris.normals` en vez de `debris[:normals]`. `compute_apparent_magnitude` y `_phong_model` lo reciben entero en lugar de cinco valores sueltos.
 - `_phong_model` suma el flujo faceta a faceta en un bucle, sin arrays temporales; misma ecuación y mismo resultado (la dirección especular ya era unitaria, así que se quita su normalización).

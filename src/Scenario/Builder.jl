@@ -21,8 +21,11 @@
 #   resolve_attitude                : bloque "attitude" de cada miembro (validado con el módulo Attitude)
 #   resolve_camera_mount            : bloque "camera_mount" de cada observador (montaje de la cámara)
 #   resolve_member_shape            : bloque "shape" de cada objetivo (resuelto con el módulo Geometry)
-#   build_section                  : construye objectives u observers
+#   build_section                   : construye objectives u observers
+#   member_name, build_member       : nombre y entrada de cada miembro en el JSON
 #   generate_config                 : spec -> Dict completo de escenario
+#   scenario_defaults               : valores por defecto < template < scenario / member_fields
+#   generator_context               : contexto de los plugins (época, μ, R, generadores aleatorios)
 #   generate_config_file            : spec.json -> JSON en disco
 #
 # Prioridad de valores (de menor a mayor):
@@ -554,38 +557,60 @@ function build_section(groups::AbstractDict, ctx, role::Symbol)
         members = lookup(PATTERNS, "pattern", pattern)(group, ctx)
         isempty(members) && error("Group '$gname': pattern '$pattern' returned no members.")
 
-        n = length(members)
-
         for (idx, el) in enumerate(members)
-            # Si el patrón da una etiqueta (p. ej. NORAD de un TLE): grupo_etiqueta (deb_25544)
-            # Si no: un miembro usa el nombre del grupo; varios, nombre + índice (cam1, cam2, ...)
-            name = haskey(el, "_label") ? string(gname, "_", el["_label"]) :
-                   n == 1               ? String(gname) : string(gname, idx)
+            name = member_name(gname, el, idx, length(members))
             haskey(out, name) && error("Duplicate name '$name'.")
-
             validate_elements(name, el, ctx)
-
-            entry = Dict{String,Any}(k => el[k] for k in ELEMENT_KEYS)
-
-            if role === :observer
-                # Observadores: montaje de la cámara, actitud del satélite y errores de navegación
-                # (el campo del grupo gana al valor general)
-                entry["camera_mount"] = resolve_camera_mount(group, name)
-                C_cb = parse_camera_mount(entry["camera_mount"], name)
-                entry["attitude"] = resolve_attitude(group, name, ctx; role = "Observer", camera_mount = C_cb)
-                entry["position_sigma_km"]   = get(group, "position_sigma_km",   ctx.member_fields["position_sigma_km"])
-                entry["velocity_sigma_km_s"] = get(group, "velocity_sigma_km_s", ctx.member_fields["velocity_sigma_km_s"])
-            else
-                # Objetivos: bloques de actitud y de forma (obligatorios en el grupo)
-                entry["attitude"] = resolve_attitude(group, name, ctx)
-                entry["shape"]    = resolve_member_shape(group, name, ctx)
-            end
-
-            out[name] = entry
+            out[name] = build_member(group, name, el, ctx, role)
         end
     end
 
     return out
+end
+
+# Nombre de un miembro: grupo_etiqueta si el patrón da una (p. ej. NORAD de un TLE: deb_25544);
+# si no, el del grupo si es el único miembro, o grupo + índice (cam1, cam2, ...)
+member_name(gname, el, idx, n) = haskey(el, "_label") ? string(gname, "_", el["_label"]) :
+                                 n == 1 ? String(gname) : string(gname, idx)
+
+"""
+    build_member(group, name, el, ctx, role) -> Dict{String,Any}
+
+Entrada de un miembro en el JSON completo: sus elementos orbitales y, según el
+papel, los bloques ya resueltos. Observadores: `camera_mount`, `attitude` y
+errores de navegación (el valor del grupo gana al general). Objetivos:
+`attitude` y `shape`.
+
+Por qué existe: separa lo que se escribe de cada miembro del recorrido de los
+grupos y patrones en `build_section`.
+
+# Argumentos
+- `group::AbstractDict`: grupo de la spec al que pertenece el miembro.
+- `name::AbstractString`: nombre del miembro (`member_name`).
+- `el::AbstractDict`: elementos orbitales devueltos por el patrón (ya validados).
+- `ctx`: contexto del generador (`generate_config`).
+- `role::Symbol`: `:objective` u `:observer`.
+
+# Devuelve
+- `Dict{String,Any}` con `SMA`…`TA` y los bloques del miembro.
+
+# Excepciones
+- Las de `resolve_attitude`, `resolve_camera_mount` y `resolve_member_shape`.
+"""
+function build_member(group::AbstractDict, name::AbstractString, el::AbstractDict, ctx, role::Symbol)
+    entry = Dict{String,Any}(k => el[k] for k in ELEMENT_KEYS)
+
+    if role === :observer
+        entry["camera_mount"] = resolve_camera_mount(group, name)
+        C_cb = parse_camera_mount(entry["camera_mount"], name)     # tracking necesita el boresight
+        entry["attitude"] = resolve_attitude(group, name, ctx; role = "Observer", camera_mount = C_cb)
+        entry["position_sigma_km"]   = get(group, "position_sigma_km",   ctx.member_fields["position_sigma_km"])
+        entry["velocity_sigma_km_s"] = get(group, "velocity_sigma_km_s", ctx.member_fields["velocity_sigma_km_s"])
+    else
+        entry["attitude"] = resolve_attitude(group, name, ctx)
+        entry["shape"]    = resolve_member_shape(group, name, ctx)
+    end
+    return entry
 end
 
 """
@@ -658,6 +683,45 @@ cfg["observers"]["cam1"]["INC"]        # ≈ 98.19 (SSO a 700 km)
 function generate_config(spec::AbstractDict; spec_dir::AbstractString = pwd())
     check_keys(spec, SPEC_KEYS; who = "spec")             # p. ej. "scenarios" por "scenario"
 
+    cfg, member_fields = scenario_defaults(spec, spec_dir)
+    seed = get_or_draw_seed(spec, "spec"; hint = "to the spec")
+    ctx = generator_context(cfg, member_fields, spec_dir, seed)
+
+    objectives = build_section(get(spec, "objectives", Dict{String,Any}()), ctx, :objective)
+    isempty(objectives) && error("The spec needs at least one objective.")
+
+    # La actitud "tracking" de los observadores necesita conocer los objetivos
+    ctx_obs = merge(ctx, (objectives = objectives,))
+    observers = build_section(get(spec, "observers", Dict{String,Any}()), ctx_obs, :observer)
+    isempty(observers) && error("The spec needs at least one observer.")
+
+    cfg["objectives"] = objectives
+    cfg["observers"]  = observers
+
+    return cfg
+end
+
+"""
+    scenario_defaults(spec, spec_dir) -> (Dict{String,Any}, Dict{String,Any})
+
+Parte común del escenario y campos por defecto de los miembros: valores de
+fábrica, encima el `template` (si lo hay, sin sus miembros) y encima los bloques
+`scenario` y `member_fields` de la spec. Comprueba que no hay claves desconocidas.
+
+Por qué existe: separa la mezcla de valores por defecto de la construcción de los
+miembros en `generate_config`.
+
+# Argumentos
+- `spec::AbstractDict`: spec leída con `read_json`.
+- `spec_dir::AbstractString`: carpeta de la spec, para rutas relativas del `template`.
+
+# Devuelve
+- `(cfg, member_fields)`.
+
+# Excepciones
+- `ErrorException`: si el `template` no se puede leer o hay claves desconocidas.
+"""
+function scenario_defaults(spec::AbstractDict, spec_dir::AbstractString)
     cfg = deepcopy(DEFAULT_TEMPLATE)                      # valores de fábrica del escenario
     member_fields = deepcopy(DEFAULT_MEMBER_FIELDS)       # valores de fábrica de cada miembro
 
@@ -676,30 +740,37 @@ function generate_config(spec::AbstractDict; spec_dir::AbstractString = pwd())
     # Erratas en el template, en "scenario" o en "member_fields" darían valores por defecto sin avisar
     check_known_keys(cfg, DEFAULT_TEMPLATE, "scenario")
     check_known_keys(member_fields, DEFAULT_MEMBER_FIELDS, "member_fields")
+    return cfg, member_fields
+end
 
-    # Semilla de los números aleatorios: la de la spec o una nueva, que se imprime para poder repetir
-    seed = get_or_draw_seed(spec, "spec"; hint = "to the spec")
+"""
+    generator_context(cfg, member_fields, spec_dir, seed) -> NamedTuple
 
-    # spec_dir permite a los patrones resolver rutas relativas a la spec (p. ej. archivos TLE)
-    # rng es el generador aleatorio común a todos los plugins (p. ej. random_LEO)
-    # rng_attitude da las semillas de las actitudes "random" y rng_shape las de las formas;
-    # van aparte para que cambiar una no altere las órbitas ni la otra
-    ctx = (epoch = DateTime(String(cfg["init_epoch"])), mu = μ, R = R,
-           member_fields = member_fields, spec_dir = spec_dir, rng = MersenneTwister(seed),
-           rng_attitude = MersenneTwister(seed + 1), rng_shape = MersenneTwister(seed + 2))
+Contexto que reciben todos los plugins del generador: época, μ y R, campos por
+defecto de los miembros, carpeta de la spec y los generadores aleatorios.
 
-    objectives = build_section(get(spec, "objectives", Dict{String,Any}()), ctx, :objective)
-    isempty(objectives) && error("The spec needs at least one objective.")
+`rng` es el común de los plugins (p. ej. `random_LEO`); `rng_attitude` da las
+semillas de las actitudes `random` y `rng_shape` las de las formas. Van aparte para
+que cambiar una no altere las órbitas ni la otra.
 
-    # La actitud "tracking" de los observadores necesita conocer los objetivos
-    ctx_obs = merge(ctx, (objectives = objectives,))
-    observers = build_section(get(spec, "observers", Dict{String,Any}()), ctx_obs, :observer)
-    isempty(observers) && error("The spec needs at least one observer.")
+Por qué existe: reúne en un sitio cómo se derivan los generadores aleatorios de la
+semilla de la spec.
 
-    cfg["objectives"] = objectives
-    cfg["observers"]  = observers
+# Argumentos
+- `cfg`, `member_fields`: salida de `scenario_defaults`.
+- `spec_dir::AbstractString`: carpeta de la spec (rutas relativas, p. ej. archivos TLE).
+- `seed::Int`: semilla de la spec (`get_or_draw_seed`).
 
-    return cfg
+# Devuelve
+- `NamedTuple` `(epoch, mu, R, member_fields, spec_dir, rng, rng_attitude, rng_shape)`.
+
+# Excepciones
+- `ArgumentError`: si `init_epoch` no es una fecha válida.
+"""
+function generator_context(cfg::AbstractDict, member_fields::AbstractDict, spec_dir::AbstractString, seed::Int)
+    return (epoch = DateTime(String(cfg["init_epoch"])), mu = μ, R = R,
+            member_fields = member_fields, spec_dir = spec_dir, rng = MersenneTwister(seed),
+            rng_attitude = MersenneTwister(seed + 1), rng_shape = MersenneTwister(seed + 2))
 end
 
 """
