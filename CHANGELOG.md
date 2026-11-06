@@ -6,6 +6,8 @@ Cambios relevantes de SIRIUS en el Caso de Estudio 2. Formato basado en [Keep a 
 
 ### 2026-11-06
 #### Añadido
+- `test/runtests.jl`: ejecuta todas las pruebas, cada archivo en su propio módulo; `Test` añadido como dependencia de pruebas en `Project.toml`, así que funciona `] test`.
+- Pruebas nuevas con casos calculados a mano: `test_transformations.jl` (Kepler, ERA, ECEF ↔ ECI, WGS84), `test_photometry.jl` (placa de una faceta, ley 1/d², sombra), `test_camera.jl` (proyección pinhole, PSF, flujo, cono del FOV) y `test_scenario.jl` (reproducibilidad del generador, elementos ↔ r-v, SSO).
 - `src/Simulation.jl` (módulo `Simulation`): `run_spec` y `run_simulation` (antes en `scripts/main.jl`). `run_simulation` se divide en `propagate_scenario`, `show_orbits`, `compute_targets_photometry` y `simulate_observers!`, un paso del flujo cada una, y carga los kernels SPICE por sí misma.
 - `scripts/benchmark.jl`: mide con `@time` la propagación y la simulación completa de una spec (sin la compilación), para comparar el rendimiento antes y después de un cambio.
 - `Geometry.DebrisModel`: tipo con los campos del modelo fotométrico de un objetivo (ver `?DebrisModel`).

@@ -38,6 +38,8 @@ julia --project=.
 ] instantiate
 ```
 
+Para comprobar la instalación, todas las pruebas de `test/` se ejecutan con `julia --project=. test/runtests.jl` (o `] test` en el REPL con el entorno activo).
+
 El catálogo reducido se genera a partir del Hipparcos completo con `scripts/reduce_hipparcos_catalog.py` (Python + `astropy`).
 
 ## Uso rápido
@@ -98,9 +100,14 @@ Una clave mal escrita en la spec, en `scenario` o en `member_fields` (p. ej. `"i
 ├── data/              # Kernels SPICE y catálogo Hipparcos
 ├── output/            # Resultados de simulación (ignorado por git)
 ├── test/
+│   ├── runtests.jl                 # Ejecuta todas las pruebas (cada archivo en su propio módulo)
 │   ├── test_attitude.jl            # Pruebas del módulo Attitude (convenciones del T6 y modos)
+│   ├── test_camera.jl              # Pruebas de CameraSim (proyección pinhole, PSF, flujo, cono del FOV)
 │   ├── test_geometry.jl            # Pruebas de Geometry (mallas, L_c, ejes, bloque shape, sorteos)
+│   ├── test_photometry.jl          # Pruebas de Photometry (placa de una faceta, ley 1/d², sombra)
 │   ├── test_propagator.jl          # Pruebas de Propagator (instantes de salida = malla 0:Δt:T)
+│   ├── test_scenario.jl            # Pruebas del generador (reproducibilidad, elementos ↔ r-v, SSO)
+│   ├── test_transformations.jl     # Pruebas de Transformations (Kepler, ERA, ECEF ↔ ECI, WGS84)
 │   └── test_visibility.jl          # Pruebas de Visibility (eclipse, línea de visión, deslumbramiento)
 ├── scripts/
 │   ├── main.jl                     # Lanzador de terminal: lee los argumentos y llama a run_spec (src/Simulation.jl)
@@ -232,6 +239,11 @@ Para añadir una forma basta con crear un archivo en `src/Geometry/shapes/` y re
 - `test/test_geometry.jl` (602 comprobaciones superadas con Julia 1.12.7): área de la esfera ≈ 4πr² (−1,2 % por ser un poliedro inscrito), del prisma, y lateral del cono y del tronco frente a la analítica (< 1 %); envolvente convexa y L_c del fragmento igual a la pedida, con los ejes principales ordenados; L_c de las fórmulas frente a la malla de cada forma (< 2 %) y orientación de los ejes de cilindro y cono; errores de validación del bloque `shape` y aviso por debajo de `SHAPE_LC_MIN_M`; sorteos reproducibles, proporciones dentro de los rangos maestros, L_c ≥ 0,1 m y proporción de fragmentos y ley de potencias en 4000 objetivos `random`; `generate_debris` sin normales NaN para todas las formas. La envolvente convexa propia se comparó con `scipy.spatial.ConvexHull` en 50 fragmentos (misma área, volumen y número de caras). Se ejecuta con `julia --project=. test/test_geometry.jl`.
 - `test/test_propagator.jl` (4 comprobaciones superadas con Julia 1.13.1): la trayectoria propagada tiene exactamente los instantes de la malla 0:Δt:T que usa `scripts/main.jl` para la dirección del Sol, también cuando T no es múltiplo de Δt (900 s con paso de 120 s → 8 instantes). Antes de la corrección del 2026-11-06 fallaba (9 instantes frente a 8). Se ejecuta con `julia --project=. test/test_propagator.jl`.
 - `test/test_visibility.jl` (19 comprobaciones superadas con Julia 1.13.1): casos geométricos calculados a mano. Eclipse: en el eje de la sombra, umbra; en el lado del Sol, iluminado; a 7000 km detrás de la Tierra, puntos a ±1 km de los radios analíticos de los conos de umbra (≈ 6345,9 km) y penumbra (≈ 6411,0 km) caen en la región correcta. LOS: bloqueada con la Tierra en medio o con el segmento 10 km bajo la superficie, visible 10 km por encima; un extremo 50 m bajo la superficie se proyecta y uno 200 km bajo ella no tiene LOS. Deslumbramiento: ángulo Sol-objetivo de 10° y 90° frente a un cono de 15°. Se ejecuta con `julia --project=. test/test_visibility.jl`.
+- `test/test_transformations.jl` (15 comprobaciones superadas con Julia 1.13.1): Kepler → cartesianas en órbita circular (r y v sobre los ejes), en perigeo y apogeo (a(1 ∓ e) y velocidad en el perigeo) y en una órbita general (energía −μ/2a, |h| = √(μa(1−e²)), inclinación y RAAN a partir de h); ERA en J2000 (280,46061837504°) y avance diario; rotación ECEF → ECI; WGS84 en el ecuador y en el polo (b = a(1 − f)).
+- `test/test_photometry.jl` (6 comprobaciones superadas con Julia 1.13.1): placa de una faceta de 1 m² de frente al Sol y al observador, F = Φ (C_diff + C_spec) A / d²; al duplicar la distancia la magnitud aumenta 5·log10(2) ≈ 1,505; la normal girada con la DCM da el mismo resultado; faceta de espaldas y objetivo en umbra sin magnitud.
+- `test/test_camera.jl` (14 comprobaciones superadas con Julia 1.13.1): RA/Dec ↔ vector; proyección pinhole en una imagen de 1001 × 1001 (boresight en el píxel 501, una dirección con tan α = 100/f a 100 px a la derecha y hacia abajo, detrás de la cámara fuera de la imagen, cámara girada); núcleo de la PSF normalizado y a mitad de altura a FWHM/2; una fuente conserva su flujo; 5 mag = factor 100; cono del FOV.
+- `test/test_scenario.jl` (11 comprobaciones superadas con Julia 1.13.1): la misma spec con la misma semilla da el mismo JSON y otra semilla, otra órbita y otra forma; elementos → r, v → elementos; el generador y `kepler_to_cartesian` dan el mismo estado; inclinación SSO a 700 km ≈ 98,19°.
+- `test/runtests.jl` ejecuta todas: 771 comprobaciones superadas con Julia 1.13.1, también con `] test`.
 - Rendimiento (`scripts/benchmark.jl`, Julia 1.13.1, sin contar la compilación), 2026-11-06: `ejemplo_actitud.json` (0,2 h, paso de 120 s, 6 objetivos, 2 cámaras, con imágenes) tarda 0,75 s (502 MiB reservados, 32 % en el recolector de basura); la propagación supone 1,2 ms. Según el perfil (`Profile`), ≈ 75 % del tiempo es guardar los PNG (copia de la imagen, percentil para el contraste y codificación) y ≈ 7 % el campo estelar con actitud variable; la fotometría queda por debajo del 5 %. `ejemplo_leo.json` (0,2 h, paso de 2 s, sin imágenes) tarda 14 ms. Tras pasar la fotometría a `DebrisModel` y al bucle por facetas, las reservas no cambian (3,51 M, 501 MiB) y el tiempo de una ejecución a otra varía entre 0,75 y 1,26 s por la escritura de los PNG; la diferencia no se debe al cambio.
 - Simulación completa de `config/specs/ejemplo_actitud.json` sin errores (≈ 10 s): seis objetivos con los cuatro modos de actitud y formas con medidas concretas, sorteadas y `random`.
 - Orientación de la cámara, con `ejemplo_actitud.json` y propagación a dos cuerpos (sin `DifferentialEquations` ni PNG): `cam1` (apuntado fijo a ECI +y, norte arriba) da las 657 posiciones de RSOs y las 1818 estrellas de la versión anterior, con la misma fila y magnitud y la columna reflejada (x → 1025 − x, ±1 px por redondeo); `cam_track` (`tracking` a `sat_nadir`) ve a su objetivo en los 361 instantes, siempre en el píxel central (512–513, 512). Las 9 specs de `config/specs/` se generan sin errores.
