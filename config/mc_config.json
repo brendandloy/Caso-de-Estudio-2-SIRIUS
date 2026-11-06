@@ -6,7 +6,7 @@
   "sim_script": "../scripts/main.jl",
   "ukf_script": "../scripts/Kalman_RSO.jl",
 
-  "sim_base_config": "config _cross_e.json",
+  "sim_base_config": "legacy/config _cross_e.json",
   "ukf_base_config": "kalman_config.json",
   "output_root": "../output",
 

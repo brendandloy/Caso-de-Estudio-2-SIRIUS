@@ -11,7 +11,7 @@
 # Es ligero: solo carga Types, Constants, Transformations, Parameters y Attitude.
 # La trayectoria de prueba es una órbita circular kepleriana analítica.
 #
-# Funciones: circular_traj, old_propagate_attitude
+# Funciones: circular_traj, axis_angle_rotation, old_propagate_attitude
 # =============================================================================
 
 using Test
@@ -53,6 +53,38 @@ function circular_traj(a_km::Real, inc_deg::Real, t::AbstractVector)
     r = [SVector(a_km * cos(n * tk), a_km * sin(n * tk) * ci, a_km * sin(n * tk) * si) for tk in t]
     v = [SVector(-a_km * n * sin(n * tk), a_km * n * cos(n * tk) * ci, a_km * n * cos(n * tk) * si) for tk in t]
     return TrajectoryData(r, v, collect(Float64.(t)))
+end
+
+"""
+    axis_angle_rotation(axis, angle) -> SMatrix{3,3,Float64,9}
+
+Matriz de rotación activa de ángulo `angle` alrededor de `axis` (fórmula de
+Rodrigues: R = cos θ I + (1 - cos θ) ê êᵀ + sin θ [ê×]).
+
+Por qué existe: es una implementación independiente de Quaternions.jl que sirve
+de solución analítica de referencia para el modo `spin` y para
+`old_propagate_attitude`. Antes estaba en Transformations.jl, pero solo la usaban
+estas pruebas.
+
+# Argumentos
+- `axis::SVector{3,Float64}`: eje de giro (unitario).
+- `angle::Float64`: ángulo (rad).
+
+# Devuelve
+- `SMatrix{3,3,Float64,9}` ortogonal con det = +1.
+
+# Excepciones
+- Ninguna (no comprueba que `axis` sea unitario).
+"""
+function axis_angle_rotation(axis::SVector{3,Float64}, angle::Float64)::SMatrix{3,3,Float64,9}
+    ux, uy, uz = axis                                 # componentes del eje unitario
+    c, s = cos(angle), sin(angle)
+    d = 1.0 - c                                       # término (1 - cos θ) de ê êᵀ
+    return @SMatrix [
+        c + ux*ux*d       ux*uy*d - uz*s   ux*uz*d + uy*s;
+        uy*ux*d + uz*s    c + uy*uy*d      uy*uz*d - ux*s;
+        uz*ux*d - uy*s    uz*uy*d + ux*s   c + uz*uz*d
+    ]
 end
 
 """

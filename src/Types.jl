@@ -1,6 +1,6 @@
 module Types
 
-export State, TrajectoryData, GroundStationLLH, StationTrack, LOSMeasurement, AttitudeData
+export State, TrajectoryData, GroundStationLLH, LOSMeasurement, AttitudeData
 
 using StaticArrays
 
@@ -19,11 +19,6 @@ struct GroundStationLLH
     lat_deg::Float64
     lon_deg::Float64
     h_m::Float64               # altura elipsoidal (m)
-end
-
-struct StationTrack
-    r::Vector{SVector{3,Float64}}  # posiciones ECI
-    t::Vector{Float64}             # tiempos (s)
 end
 
 struct LOSMeasurement

@@ -54,22 +54,33 @@ function load_coefs_n4()
 end
 
 
+"""
+    accel_earth_perturbations(r_eci, t, C, S, θ₀; Nmax=4) -> SVector{3,Float64}
+
+Aceleración perturbadora del campo gravitatorio terrestre (armónicos de grado
+2 a `Nmax`, sin el término central μ/r²) en ECI, con la recursión de V_nm y W_nm
+de Montenbruck & Gill (2000), ec. (3.27)–(3.33). Se rota r a ECEF con el ángulo
+de rotación terrestre, se evalúa allí y se vuelve a ECI.
+
+Por qué existe: es la parte no kepleriana de la dinámica que integra `propagate`
+(J2, J3, J4 y teserales hasta grado 4).
+
+# Argumentos
+- `r_eci::SVector{3,Float64}`: posición en ECI (km).
+- `t::Float64`: tiempo desde la época inicial (s).
+- `C`, `S`: coeficientes no normalizados, índice `[n+1, m+1]` (ver `load_coefs_n4`).
+- `θ₀`: ángulo de rotación terrestre en la época inicial (rad, `theta0_from_utc`).
+- `Nmax::Int`: grado máximo; no puede superar el de la tabla `C`, `S`.
+
+# Devuelve
+- `SVector{3,Float64}`: aceleración en ECI (km/s²).
+
+# Excepciones
+- `BoundsError`: si `Nmax` es mayor que el grado de los coeficientes (4 con `load_coefs_n4`).
+"""
 function accel_earth_perturbations(r_eci::SVector{3,Float64},
                                    t::Float64,
                                    C, S, θ₀; Nmax::Int = 4)
-
-"""
-Calcula la aceleración gravitatoria de la Tierra en coordenadas ECI,
-usando las ecuaciones (3.27)–(3.33) de Montenbruck & Gill (2000).
-
-# Parámetros
-- `r_ecef`: posición en el marco Tierra-fijo [m].
-- `Nmax`: grado máximo del modelo armónico (por defecto 4).
-- `θ_g`: ángulo sideral de rotación de la Tierra [rad] (para rotar a ECI).
-
-# Devuelve
-- `SVector{3,Float64}` aceleración en ECI [m/s²].
-"""
 
     # --- Rotar ECI → ECEF ---
 

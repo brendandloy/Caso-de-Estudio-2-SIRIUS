@@ -31,14 +31,11 @@ using CSV
 using Dates
 
 using ..Types
+using ..Constants: DATA_DIR     # carpeta data/ (catálogo Hipparcos)
 
 # Normalice RA to [0,360)
 @inline function wrap360(x)
     return mod(x, 360.0)
-end
-
-@inline function wrap_pi(x)
-    return mod(x + π, 2π) - π
 end
 
 @inline function mag_to_flux(m::Real, mag0::Real, flux0::Real)
@@ -423,15 +420,6 @@ function add_read_noise!(img::Matrix{Float64}, sigma::Real;
 end
 
 
-function add_bias!(img::Matrix{Float64}, bias::Real)
-    b = Float64(bias)
-    @inbounds for idx in eachindex(img)
-        img[idx] += b
-    end
-    return nothing
-end
-
-
 function build_debris_catalog(obj_names::Vector{Symbol}, obj_trajs::Vector{TrajectoryData},
     photometry_data::AbstractDict{Tuple{Symbol,Symbol},<:NamedTuple},
     obs_name::Symbol, r_obs::SVector{3,Float64}, i::Int)
@@ -606,7 +594,7 @@ se recalcula en cada imagen.
 function camera_sim!(data::Dict{Symbol,TrajectoryData}, los_measurements::Dict{Symbol, Dict{Symbol, Vector{LOSMeasurement}}}, photometry_data::Dict{Tuple{Symbol,Symbol},NamedTuple},
     C_ci::AbstractVector, obs_name::Symbol, obj_names::Vector{Symbol}, output_path, config)
 
-    path = joinpath(@__DIR__, "..", "data", "I_239_vmag10_reduced.fits")
+    path = joinpath(DATA_DIR, "I_239_vmag10_reduced.fits")
     outdir = joinpath(output_path, String(obs_name))
     mkpath(outdir)
 

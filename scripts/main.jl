@@ -31,12 +31,13 @@ using Project.Visualization
 using Project.CameraSim
 using Project.Geometry
 using Project.Photometry
+using Project.Constants: DATA_DIR    # carpeta data/ de la raíz (kernels SPICE)
 
 using Dates
 using SPICE
 using StaticArrays
 
-load_kernels(joinpath(@__DIR__, "../data"))
+load_kernels(DATA_DIR)
 
 #--------------------------------------CONFIG-------------------------------------------------
 

@@ -7,9 +7,18 @@ Cambios relevantes de SIRIUS en el Caso de Estudio 2. Formato basado en [Keep a 
 ### 2026-11-06
 #### Añadido
 - `test/test_propagator.jl`: comprueba que la trayectoria propagada tiene los mismos instantes que la malla 0:Δt:T de `scripts/main.jl`.
+- `Constants.DATA_DIR`: ruta única a la carpeta `data/` de la raíz; la usan `scripts/main.jl` (kernels SPICE) y `Camera_sim.jl` (catálogo Hipparcos) en lugar de escribirla cada uno.
+
+#### Cambiado
+- Las configuraciones heredadas escritas a mano (`config/config*.json`) pasan a `config/legacy/`. `mc_config.json` apunta a `legacy/config _cross_e.json`.
+- Docstring de `accel_earth_perturbations` colocado encima de la función (antes estaba dentro y `?accel_earth_perturbations` no lo mostraba) y con las unidades reales (km, km/s²).
 
 #### Corregido
 - `propagate` devolvía un instante de más (el final T) cuando la duración no era múltiplo del paso de salida, y la trayectoria quedaba con una muestra más que la dirección del Sol; la fotometría leía entonces fuera de `sun_dir` sin dar error. Ahora la salida es exactamente 0:Δt:T. Las simulaciones con T múltiplo de Δt no cambian.
+
+#### Eliminado
+- Dependencias sin uso `AstroTime` y `QHull` (la envolvente convexa es propia desde el 2026-11-01).
+- Código sin uso: `wrap_pi` y `add_bias!` (`Camera_sim.jl`), el tipo `StationTrack` (`Types.jl`), `Constants.data_path` (apuntaba a `src/data`, que no existe) y `phi_sun` comentado en `Constants.jl` (la irradiancia se lee de `photometry_config.phi_sun`).
 
 ### 2026-11-04
 #### Añadido

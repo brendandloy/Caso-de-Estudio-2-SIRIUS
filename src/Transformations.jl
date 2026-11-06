@@ -1,6 +1,6 @@
 module Transformations
 
-export Rz, θ_g, rotate_z, llh_to_ecef, kepler_to_cartesian, theta0_from_utc, axis_angle_rotation
+export Rz, θ_g, rotate_z, llh_to_ecef, kepler_to_cartesian, theta0_from_utc
 
 using ..Constants
 using ..Types
@@ -31,21 +31,6 @@ end
     return SVector{3,Float64}(x, y, z)
 end
 
-
-@inline function axis_angle_rotation(axis::SVector{3,Float64}, angle::Float64)::SMatrix{3,3,Float64,9}
-
-    ux, uy, uz = axis
-
-    c = cos(angle)
-    s = sin(angle)
-    d = 1.0 - c
-
-    return @SMatrix [
-        c + ux*ux*d       ux*uy*d - uz*s   ux*uz*d + uy*s;
-        uy*ux*d + uz*s    c + uy*uy*d      uy*uz*d - ux*s;
-        uz*ux*d - uy*s    uz*uy*d + ux*s   c + uz*uz*d
-    ]
-end
 
 #------------------------------------FUNCTIONS----------------------------------------------
 

@@ -93,7 +93,8 @@ Una clave mal escrita en la spec, en `scenario` o en `member_fields` (p. ej. `"i
 │   ├── specs/         # Specs de escenario escritas a mano; plantilla.json lista todas las opciones
 │   ├── generated/     # Configuraciones completas generadas a partir de las specs
 │   ├── tle/           # Archivos TLE de ejemplo
-│   └── *.json         # Configuraciones heredadas (escritas a mano), Kalman y Monte Carlo
+│   ├── legacy/        # Configuraciones heredadas escritas a mano (formato anterior, sin "attitude" ni "shape")
+│   └── *.json         # Configuración del Kalman y de Monte Carlo
 ├── data/              # Kernels SPICE y catálogo Hipparcos
 ├── output/            # Resultados de simulación (ignorado por git)
 ├── test/

@@ -222,7 +222,6 @@ function gs_positions(stations::Dict{Symbol,GroundStationLLH}, start_time, tvec:
 
         # 3×N matrix (each column is one timestamp)
         out[key] = TrajectoryData(positions, velocities, t_out)
-        # println("Final position of $key: ", out[key].r[end][1:3])
     end
 
     return out
