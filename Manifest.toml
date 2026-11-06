@@ -2,7 +2,7 @@
 
 julia_version = "1.13.1"
 manifest_format = "2.1"
-project_hash = "af6bdb8a32039a7f9312f2139993aaa62227bb01"
+project_hash = "be493f78a7751620ff29e89c5f33b4f9fd81907f"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "f7304359109c768cf32dc5fa2d371565bb63b68a"
@@ -2798,12 +2798,6 @@ registries = "General"
 uuid = "92933f4c-e287-5a05-a399-4b506db050ca"
 version = "1.11.0"
 
-[[deps.Project]]
-deps = ["CSV", "DataFrames", "Dates", "DifferentialEquations", "FITSIO", "GLMakie", "GeometryBasics", "ImageIO", "Images", "JSON3", "LinearAlgebra", "Random", "SPICE", "SatelliteToolboxSgp4", "SatelliteToolboxTle", "SatelliteToolboxTransformations", "StaticArrays", "Statistics"]
-path = "."
-uuid = "73ee47e5-2521-49db-aea1-685399926e86"
-version = "1.0.0"
-
 [[deps.PtrArrays]]
 git-tree-sha1 = "1d36ef11a9aaf1e8b74dacc6a731dd1de8fd493d"
 registries = "General"
@@ -3033,6 +3027,12 @@ git-tree-sha1 = "330289636fb8107c5f32088d2741e9fd7a061a5c"
 registries = "General"
 uuid = "94e857df-77ce-4151-89e5-788b33177be4"
 version = "0.1.0"
+
+[[deps.SIRIUS]]
+deps = ["CSV", "DataFrames", "Dates", "DifferentialEquations", "FITSIO", "GLMakie", "GeometryBasics", "ImageIO", "Images", "JSON3", "LinearAlgebra", "Random", "SPICE", "SatelliteToolboxSgp4", "SatelliteToolboxTle", "SatelliteToolboxTransformations", "StaticArrays", "Statistics"]
+path = "."
+uuid = "73ee47e5-2521-49db-aea1-685399926e86"
+version = "1.0.0"
 
 [[deps.SLEEFPirates]]
 deps = ["IfElse", "Static", "VectorizationBase"]

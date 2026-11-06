@@ -20,11 +20,9 @@
 # Funciones: ninguna (están en src/Simulation.jl).
 # =============================================================================
 
-push!(LOAD_PATH, joinpath(@__DIR__, ".."))
-
-using Project
-using Project.Simulation                     # run_spec, run_simulation
-using Project.Environment: parse_arguments   # argumentos de la línea de comandos
+using SIRIUS                                 # paquete del repositorio (activo con --project=.)
+using SIRIUS.Simulation                      # run_spec, run_simulation
+using SIRIUS.Environment: parse_arguments    # argumentos de la línea de comandos
 
 # Solo se ejecuta al lanzar el script directamente, no al hacer include (VS Code, MonteCarlo)
 if abspath(PROGRAM_FILE) == abspath(@__FILE__)

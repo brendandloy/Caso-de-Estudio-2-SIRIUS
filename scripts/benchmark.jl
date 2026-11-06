@@ -18,11 +18,11 @@
 # Funciones: ninguna (llama a run_simulation y a propagate).
 # =============================================================================
 
-include(joinpath(@__DIR__, "main.jl"))      # carga Project; run_simulation
+include(joinpath(@__DIR__, "main.jl"))      # carga SIRIUS; run_simulation
 
-using Project.Scenario: generate_config_file
-using Project.Environment: load_config
-using Project.Propagator: propagate
+using SIRIUS.Scenario: generate_config_file
+using SIRIUS.Environment: load_config
+using SIRIUS.Propagator: propagate
 
 # Spec a medir: la del argumento o la de ejemplo con actitud variable (tracking)
 spec_path = length(ARGS) >= 1 ? abspath(ARGS[1]) :

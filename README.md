@@ -118,7 +118,7 @@ Una clave mal escrita en la spec, en `scenario` o en `member_fields` (p. ej. `"i
 │   ├── run_*_vscode.jl             # Lanzadores para VS Code (en el de simulación se elige la spec)
 │   └── reduce_hipparcos_catalog.py # Reducción del catálogo Hipparcos
 └── src/
-    ├── Project.jl          # Módulo raíz: incluye todos los submódulos
+    ├── SIRIUS.jl           # Módulo raíz del paquete SIRIUS: incluye todos los submódulos
     ├── Types.jl            # Tipos de datos (State, TrajectoryData, AttitudeData…)
     ├── Constants.jl        # Constantes físicas (μ, R, ω⊕, WGS84…)
     ├── Parameters.jl       # Parámetros maestros del programa (no los elige el usuario; ver abajo)

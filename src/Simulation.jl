@@ -21,7 +21,7 @@
 #   compute_targets_photometry : paso 3
 #   simulate_observers!        : paso 4
 #
-# Dependencias: todos los módulos de src/, que Project.jl incluye antes que este.
+# Dependencias: todos los módulos de src/, que SIRIUS.jl incluye antes que este.
 # =============================================================================
 
 module Simulation

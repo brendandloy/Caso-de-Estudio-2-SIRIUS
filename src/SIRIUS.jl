@@ -1,4 +1,4 @@
-module Project
+module SIRIUS
 
 # ========================
 # submodul inclussions
@@ -39,4 +39,4 @@ using .Geometry
 using .Photometry
 using .Simulation
 
-end # module Project
+end # module SIRIUS
