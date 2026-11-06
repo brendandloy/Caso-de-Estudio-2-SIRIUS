@@ -18,6 +18,7 @@ include("Propagator.jl")
 include("Visualization.jl")
 include("Camera_sim.jl")
 include("Photometry.jl")
+include("Simulation.jl")          # flujo completo de la simulación (run_spec, run_simulation); el último
 
 # ========================
 # exported submodules
@@ -36,5 +37,6 @@ using .Visualization
 using .CameraSim
 using .Geometry
 using .Photometry
+using .Simulation
 
 end # module Project

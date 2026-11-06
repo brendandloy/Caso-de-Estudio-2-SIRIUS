@@ -6,6 +6,7 @@ Cambios relevantes de SIRIUS en el Caso de Estudio 2. Formato basado en [Keep a 
 
 ### 2026-11-06
 #### Añadido
+- `src/Simulation.jl` (módulo `Simulation`): `run_spec` y `run_simulation` (antes en `scripts/main.jl`). `run_simulation` se divide en `propagate_scenario`, `show_orbits`, `compute_targets_photometry` y `simulate_observers!`, un paso del flujo cada una, y carga los kernels SPICE por sí misma.
 - `scripts/benchmark.jl`: mide con `@time` la propagación y la simulación completa de una spec (sin la compilación), para comparar el rendimiento antes y después de un cambio.
 - `Geometry.DebrisModel`: tipo con los campos del modelo fotométrico de un objetivo (ver `?DebrisModel`).
 - `src/Visibility.jl` (módulo `Visibility`): eclipse por la Tierra, línea de visión y cono de deslumbramiento solar, con el modelo y las ecuaciones en sus docstrings (`?eclipseEarthECI`, `?losECI`, `?sunGlareConeECI`).
@@ -15,6 +16,7 @@ Cambios relevantes de SIRIUS en el Caso de Estudio 2. Formato basado en [Keep a 
 - `Constants.DATA_DIR`: ruta única a la carpeta `data/` de la raíz; la usan `scripts/main.jl` (kernels SPICE) y `Camera_sim.jl` (catálogo Hipparcos) en lugar de escribirla cada uno.
 
 #### Cambiado
+- `scripts/main.jl` queda como lanzador: carga el paquete y, desde la terminal, lee los argumentos y llama a `run_spec`. `include("scripts/main.jl")` sigue dejando disponibles `run_spec` y `run_simulation` (lanzador de VS Code, REPL, `benchmark.jl`, `MonteCarlo.jl`).
 - `generate_debris` devuelve un `DebrisModel` en lugar de un `Dict{Symbol,Any}`: los campos se leen como `debris.normals` en vez de `debris[:normals]`. `compute_apparent_magnitude` y `_phong_model` lo reciben entero en lugar de cinco valores sueltos.
 - `_phong_model` suma el flujo faceta a faceta en un bucle, sin arrays temporales; misma ecuación y mismo resultado (la dirección especular ya era unitaria, así que se quita su normalización).
 - `accel_earth_perturbations`: el grado máximo por defecto es el de la tabla de coeficientes (`size(C, 1) - 1`), en lugar de 4 fijo.

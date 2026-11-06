@@ -103,7 +103,7 @@ Una clave mal escrita en la spec, en `scenario` o en `member_fields` (p. ej. `"i
 │   ├── test_propagator.jl          # Pruebas de Propagator (instantes de salida = malla 0:Δt:T)
 │   └── test_visibility.jl          # Pruebas de Visibility (eclipse, línea de visión, deslumbramiento)
 ├── scripts/
-│   ├── main.jl                     # Spec → JSON completo → simulación (propagación → forma y actitud → fotometría → cámara → CSV)
+│   ├── main.jl                     # Lanzador de terminal: lee los argumentos y llama a run_spec (src/Simulation.jl)
 │   ├── generate_config.jl          # Spec → JSON de escenario
 │   ├── benchmark.jl                # Tiempo y memoria de la propagación y de la simulación completa de una spec
 │   ├── Kalman_RSO.jl               # Filtro de Kalman sobre las medidas LOS simuladas
@@ -134,6 +134,7 @@ Una clave mal escrita en la spec, en `scenario` o en `member_fields` (p. ej. `"i
     ├── Photometry.jl       # Magnitud aparente (modelo de Phong por facetas)
     ├── Camera_sim.jl       # Generación de imagen con la orientación de la cámara: estrellas, PSF, fondo, ruido
     ├── Visualization.jl    # Visualización 3D de órbitas (GLMakie)
+    ├── Simulation.jl       # Flujo completo: run_spec (spec → JSON → simulación) y run_simulation, por pasos
     └── Scenario/           # Generador de escenarios (ver abajo)
         ├── Scenario.jl       # Registros de plugins y autocarga
         ├── Builder.jl        # Valores por defecto, validación y escritura del JSON

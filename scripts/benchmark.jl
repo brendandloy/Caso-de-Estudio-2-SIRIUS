@@ -15,10 +15,14 @@
 # Lo que imprime @time: tiempo, número de reservas de memoria ("allocations"),
 # memoria total reservada y % del tiempo en el recolector de basura (gc time).
 #
-# Funciones: ninguna (llama a run_simulation de main.jl y a propagate).
+# Funciones: ninguna (llama a run_simulation y a propagate).
 # =============================================================================
 
-include(joinpath(@__DIR__, "main.jl"))      # run_simulation, Project.* y kernels SPICE
+include(joinpath(@__DIR__, "main.jl"))      # carga Project; run_simulation
+
+using Project.Scenario: generate_config_file
+using Project.Environment: load_config
+using Project.Propagator: propagate
 
 # Spec a medir: la del argumento o la de ejemplo con actitud variable (tracking)
 spec_path = length(ARGS) >= 1 ? abspath(ARGS[1]) :
