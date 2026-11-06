@@ -32,7 +32,7 @@ module Scenario
 # módulo Attitude (src/Attitude/), el mismo que usa el simulador.
 # Lo mismo con la forma: el bloque "shape" lo resuelve y valida el módulo Geometry.
 #
-# Dependencias: Constants (μ, R, ω_earth), Transformations (theta0_from_utc),
+# Dependencias: Constants (MU_EARTH, R_EARTH, J2_EARTH, OMEGA_EARTH), Transformations (theta0_from_utc),
 # Attitude (parse_attitude, attitude_block, bind_attitude, camera_mount_block,
 # parse_camera_mount) y Geometry (shape_block, resolve_shape),
 # que deben estar cargados antes
@@ -44,7 +44,7 @@ module Scenario
 export generate_config, generate_config_file, write_config
 export register_orbit!, register_pattern!, register_layout!
 
-using ..Constants          # μ, R (km), ω_earth (rad/s)
+using ..Constants          # MU_EARTH, R_EARTH (km), J2_EARTH, OMEGA_EARTH (rad/s)
 using ..JSONUtils: check_keys, get_or_draw_seed   # validación de claves y semillas, común a todos los módulos
 using ..Transformations: theta0_from_utc   # misma rotación terrestre (ERA) que el simulador
 using ..Attitude: parse_attitude, attitude_block, bind_attitude   # bloque "attitude" de objetivos y observadores

@@ -49,7 +49,7 @@ const A = Attitude                     # acceso corto a las funciones internas
 - Ninguna.
 """
 function circular_traj(a_km::Real, inc_deg::Real, t::AbstractVector)
-    n = sqrt(μ / a_km^3)                          # movimiento medio (rad/s)
+    n = sqrt(MU_EARTH / a_km^3)                          # movimiento medio (rad/s)
     ci, si = cosd(inc_deg), sind(inc_deg)
     r = [SVector(a_km * cos(n * tk), a_km * sin(n * tk) * ci, a_km * sin(n * tk) * si) for tk in t]
     v = [SVector(-a_km * n * sin(n * tk), a_km * n * cos(n * tk) * ci, a_km * n * cos(n * tk) * si) for tk in t]

@@ -9,18 +9,18 @@
 #   losECI          : ¿hay línea de visión entre dos puntos, sin que la Tierra la corte?
 #   sunGlareConeECI : ¿está el objetivo dentro del cono de deslumbramiento del Sol?
 #
-# Modelo: Tierra esférica de radio R (Constants), Sol a distancia D_sun con radio R_sun,
+# Modelo: Tierra esférica de radio R = R_EARTH, Sol a distancia D = D_SUN con radio R☉ = R_SUN,
 # todo en ECI y en km. La dirección del Sol es la geocéntrica (la diferencia con la
 # vista desde el satélite es < 0,003° en LEO-GEO).
 #
-# Dependencias: Constants (R, R_sun, D_sun).
+# Dependencias: Constants (R_EARTH, R_SUN, D_SUN).
 # =============================================================================
 
 module Visibility
 
 export eclipseEarthECI, losECI, sunGlareConeECI
 
-using ..Constants: R, R_sun, D_sun
+using ..Constants: R_EARTH, R_SUN, D_SUN
 
 using LinearAlgebra
 using StaticArrays
@@ -39,8 +39,8 @@ Indica si un punto está en la sombra de la Tierra con el modelo de conos de umb
 penumbra. En el eje de la sombra (opuesto al Sol), a una distancia x detrás de la
 Tierra, los radios de los conos son
 
-    r_u(x) = R (1 - x / L_u),   L_u = D_sun R / (R_sun - R)
-    r_p(x) = R (1 + x / L_p),   L_p = D_sun R / (R_sun + R)
+    r_u(x) = R (1 - x / L_u),   L_u = D R / (R☉ - R)
+    r_p(x) = R (1 + x / L_p),   L_p = D R / (R☉ + R)
 
 con L_u y L_p las distancias del centro de la Tierra al vértice de cada cono. El
 punto está en umbra si su distancia al eje ρ ≤ r_u(x), y en penumbra si ρ ≤ r_p(x).
@@ -69,10 +69,10 @@ function eclipseEarthECI(r_sc::SVector{3,Float64}, u_sun::SVector{3,Float64})
     rho = norm(r_sc - x * u_axis)                    # distancia al eje
     x <= 0.0 && return false, "lit"                  # en el lado del Sol
 
-    L_umbra = D_sun * R / (R_sun - R)                # vértice del cono de umbra
-    L_penum = D_sun * R / (R_sun + R)                # vértice (delante de la Tierra) del de penumbra
-    r_umbra = max(R * (1.0 - x / L_umbra), 0.0)
-    r_penum = R * (1.0 + x / L_penum)
+    L_umbra = D_SUN * R_EARTH / (R_SUN - R_EARTH)                # vértice del cono de umbra
+    L_penum = D_SUN * R_EARTH / (R_SUN + R_EARTH)                # vértice (delante de la Tierra) del de penumbra
+    r_umbra = max(R_EARTH * (1.0 - x / L_umbra), 0.0)
+    r_penum = R_EARTH * (1.0 + x / L_penum)
 
     (x <= L_umbra + TOL && r_umbra > 0.0 && rho <= r_umbra + TOL) && return true, "umbra"
     rho <= r_penum + TOL && return true, "penumbra"
@@ -100,9 +100,9 @@ negativa) cortaría siempre la esfera y nunca tendría LOS.
 """
 function project_to_surface(r::SVector{3,Float64})
     rn = norm(r)
-    depth = R - rn                                   # > 0 si está bajo la superficie
+    depth = R_EARTH - rn                                   # > 0 si está bajo la superficie
     depth <= TOL && return r
-    depth <= MAX_PROJECT_DEPTH_KM && return (R / rn) * r
+    depth <= MAX_PROJECT_DEPTH_KM && return (R_EARTH / rn) * r
     return nothing
 end
 
@@ -146,7 +146,7 @@ function losECI(r1::SVector{3,Float64}, r2::SVector{3,Float64})
     a = dot(d, d)
     a <= TOL && return false                          # puntos coincidentes
     b = 2.0 * dot(p1, d)
-    c = dot(p1, p1) - R^2
+    c = dot(p1, p1) - R_EARTH^2
     disc = b^2 - 4.0 * a * c
     scale = b^2 + 4.0 * a * abs(c)                    # escala del discriminante, para las tolerancias
 

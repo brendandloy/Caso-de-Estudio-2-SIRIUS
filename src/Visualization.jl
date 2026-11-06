@@ -20,7 +20,7 @@ function setup_scene()
     ax.aspect = :data
 
     # Tierra (esfera)
-    R_scaled = R / 1000
+    R_scaled = R_EARTH / 1000
     θ = range(0, 2π, length=50)
     φ = range(0, π, length=50)
     x = [R_scaled * sin(ϕ) * cos(θi) for ϕ in φ, θi in θ]

@@ -120,7 +120,7 @@ Una clave mal escrita en la spec, en `scenario` o en `member_fields` (p. ej. `"i
 └── src/
     ├── SIRIUS.jl           # Módulo raíz del paquete SIRIUS: incluye todos los submódulos
     ├── Types.jl            # Tipos de datos (State, TrajectoryData, AttitudeData…)
-    ├── Constants.jl        # Constantes físicas (μ, R, ω⊕, WGS84…)
+    ├── Constants.jl        # Constantes físicas (MU_EARTH, R_EARTH, J2_EARTH, OMEGA_EARTH, WGS84…)
     ├── Parameters.jl       # Parámetros maestros del programa (no los elige el usuario; ver abajo)
     ├── JSON_utils.jl       # Lectores y validadores comunes de los bloques del JSON (claves, números, semillas)
     ├── Transformations.jl  # Rotaciones y conversiones de sistemas de referencia

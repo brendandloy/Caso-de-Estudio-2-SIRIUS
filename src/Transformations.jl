@@ -8,7 +8,7 @@ using ..Types
 using StaticArrays
 
 @inline function θ_g(θ₀::Float64, t::Float64)
-    return θ₀ + ω_earth * t
+    return θ₀ + OMEGA_EARTH * t
 end
 
 @inline function Rz(θ::Float64)
@@ -54,8 +54,8 @@ function kepler_to_cartesian(dict)::State
     ]
 
     v_pf = @SVector [
-        -sqrt(μ/p) * sin(ν),
-         sqrt(μ/p) * (e + cos(ν)),
+        -sqrt(MU_EARTH/p) * sin(ν),
+         sqrt(MU_EARTH/p) * (e + cos(ν)),
          0.0
     ]
 
@@ -85,7 +85,7 @@ end
 
 
 function theta0_from_utc(jd::Float64)
-    era = 2π*(0.7790572732640 + 1.00273781191135448*(jd - jd_J2000))
+    era = 2π*(0.7790572732640 + 1.00273781191135448*(jd - JD_J2000))
     return mod(era, 2π)
 end
 end

@@ -70,4 +70,10 @@ end
         # Posiciones y velocidades: una por instante
         @test length(traj.r) == length(traj.v) == length(traj.t)
     end
+
+    @testset "Coherencia con Constants" begin
+        # J2_EARTH (inclinación SSO del generador) es -C20 de la tabla del propagador
+        C, _ = Propagator.load_coefs_n4()
+        @test J2_EARTH == -C[3, 1]
+    end
 end

@@ -33,10 +33,10 @@ const SUN_X = SVector(1.0, 0.0, 0.0)                 # dirección del Sol: +x EC
 
     @testset "Eclipse (conos de umbra y penumbra)" begin
         # Radios analíticos de los conos a x = 7000 km detrás de la Tierra
-        L_u = D_sun * R / (R_sun - R)
-        L_p = D_sun * R / (R_sun + R)
-        r_u = R * (1 - 7000 / L_u)                   # ≈ 6345.9 km
-        r_p = R * (1 + 7000 / L_p)                   # ≈ 6411.0 km
+        L_u = D_SUN * R_EARTH / (R_SUN - R_EARTH)
+        L_p = D_SUN * R_EARTH / (R_SUN + R_EARTH)
+        r_u = R_EARTH * (1 - 7000 / L_u)                   # ≈ 6345.9 km
+        r_p = R_EARTH * (1 + 7000 / L_p)                   # ≈ 6411.0 km
 
         # En el eje de la sombra: umbra; en el lado del Sol: iluminado
         @test eclipseEarthECI(SVector(-7000.0, 0, 0), SUN_X) == (true, "umbra")
@@ -58,17 +58,17 @@ const SUN_X = SVector(1.0, 0.0, 0.0)                 # dirección del Sol: +x EC
         @test losECI(SVector(7000.0, 0, 0), SVector(7000.0, 1000, 0))
 
         # Segmento que pasa a 10 km por encima o por debajo de la superficie
-        h = R + 10.0
+        h = R_EARTH + 10.0
         @test losECI(SVector(-8000.0, h, 0), SVector(8000.0, h, 0))
-        h = R - 10.0
+        h = R_EARTH - 10.0
         @test !losECI(SVector(-8000.0, h, 0), SVector(8000.0, h, 0))
 
         # Los dos puntos al otro lado del mismo hemisferio (la recta corta la esfera fuera del segmento)
         @test losECI(SVector(7000.0, 0, 0), SVector(9000.0, 0, 0))
 
         # Extremo 50 m bajo la superficie (se proyecta) y 200 km bajo ella (sin LOS)
-        @test losECI(SVector(R - 0.05, 0, 0), SVector(R + 500, 0, 0))
-        @test !losECI(SVector(R - 200, 0, 0), SVector(R + 500, 0, 0))
+        @test losECI(SVector(R_EARTH - 0.05, 0, 0), SVector(R_EARTH + 500, 0, 0))
+        @test !losECI(SVector(R_EARTH - 200, 0, 0), SVector(R_EARTH + 500, 0, 0))
 
         # Puntos coincidentes: sin LOS
         @test !losECI(SVector(7000.0, 0, 0), SVector(7000.0, 0, 0))

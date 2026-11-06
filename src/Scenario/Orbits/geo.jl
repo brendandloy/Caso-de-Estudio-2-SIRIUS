@@ -8,7 +8,7 @@
 #   {"type": "GEO", "longitude_deg": -3.7}      # longitud este positiva
 #
 # Todo lo demás está fijado por la definición de GEO o se calcula:
-#   SMA  : (μ / ω_earth²)^(1/3), periodo = día sidéreo del simulador
+#   SMA  : (μ / ω⊕²)^(1/3), periodo = día sidéreo del simulador
 #   ECC  : 0          INC : 0         (definición de GEO)
 #   RAAN : 0          AOP : 0         (indefinidos con e = 0, i = 0)
 #   TA   : ERA(t0) + longitude_deg    (longitud verdadera inercial)
@@ -50,8 +50,8 @@ function geo_elements(p::AbstractDict, ctx)
     lon = getreq(p, "longitude_deg")
     (-180 <= lon <= 360) || error("'GEO': longitude_deg must be in [-180, 360] (got $lon).")
 
-    # Radio de la órbita con periodo igual a la rotación terrestre del simulador (ω_earth)
-    sma = cbrt(ctx.mu / ω_earth^2)
+    # Radio de la órbita con periodo igual a la rotación terrestre del simulador (OMEGA_EARTH)
+    sma = cbrt(ctx.mu / OMEGA_EARTH^2)
 
     # Longitud inercial del satélite = ángulo de rotación terrestre + longitud geográfica
     ta = mod(era_deg(ctx.epoch) + lon, 360.0)

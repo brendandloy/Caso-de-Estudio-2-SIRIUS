@@ -57,8 +57,8 @@ spec(seed) = Dict{String,Any}(
     @testset "Elementos <-> r, v" begin
         el = Dict{String,Any}("SMA" => 12000.0, "ECC" => 0.25, "INC" => 63.4,
                               "RAAN" => 40.0, "AOP" => 270.0, "TA" => 123.0)
-        r, v = S.elements_to_rv(el, μ)
-        back = S.cartesian_to_kepler(r, v, μ)
+        r, v = S.elements_to_rv(el, MU_EARTH)
+        back = S.cartesian_to_kepler(r, v, MU_EARTH)
         for k in keys(el)
             @test back[k] ≈ el[k]
         end
@@ -70,6 +70,6 @@ spec(seed) = Dict{String,Any}(
 
     @testset "Órbita heliosíncrona" begin
         # A 700 km, la precesión nodal por J2 sigue al Sol medio con i ≈ 98,19° (circular)
-        @test S.sso_inclination_deg(R + 700, 0.0, (mu = μ, R = R)) ≈ 98.19 atol = 0.01
+        @test S.sso_inclination_deg(R_EARTH + 700, 0.0, (mu = MU_EARTH, R = R_EARTH)) ≈ 98.19 atol = 0.01
     end
 end

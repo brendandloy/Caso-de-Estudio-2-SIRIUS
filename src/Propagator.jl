@@ -93,10 +93,10 @@ function accel_earth_perturbations(r_eci::SVector{3,Float64},
     r  = sqrt(r2)
 
     # Factores que se repiten en las recursiones
-    xR_r2 = x * R / r2
-    yR_r2 = y * R / r2
-    zR_r2 = z * R / r2
-    R2_r2 = (R^2) / r2
+    xR_r2 = x * R_EARTH / r2
+    yR_r2 = y * R_EARTH / r2
+    zR_r2 = z * R_EARTH / r2
+    R2_r2 = (R_EARTH^2) / r2
 
     # --- Vnm y Wnm hasta n = Nmax+1 ---
     # Dimensión: índice (n,m) -> [n+1, m+1]
@@ -104,7 +104,7 @@ function accel_earth_perturbations(r_eci::SVector{3,Float64},
     W = zeros(Float64, Nmax+2, Nmax+2)
 
     # Condiciones iniciales (3.31): V00 = R/r, W00 = 0
-    V[1,1] = R / r
+    V[1,1] = R_EARTH / r
     W[1,1] = 0.0
 
     # 1) ZONALES Vn0 con la 3.30 (m = 0), Wn0 = 0
@@ -140,7 +140,7 @@ function accel_earth_perturbations(r_eci::SVector{3,Float64},
     end
 
     # --- Aceleraciones en ECEF (3.15–3.17 / 3.18–3.19) ---
-    gm_R2 = μ / (R^2)
+    gm_R2 = MU_EARTH / (R_EARTH^2)
 
     ax = 0.0
     ay = 0.0
@@ -209,7 +209,7 @@ function propagate(obj_dict::Dict{Symbol, State}, start_time, sim_time, Δt_out)
                 r = SVector{3}(u[1:3])
                 v = SVector{3}(u[4:6])
 
-                a_central = -μ / norm(r)^3 * r
+                a_central = -MU_EARTH / norm(r)^3 * r
                 a_j = accel_earth_perturbations(r, t, C, S, θ₀)
 
                 return vcat(v, a_central + a_j)

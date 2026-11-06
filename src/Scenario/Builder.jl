@@ -768,7 +768,7 @@ semilla de la spec.
 - `ArgumentError`: si `init_epoch` no es una fecha válida.
 """
 function generator_context(cfg::AbstractDict, member_fields::AbstractDict, spec_dir::AbstractString, seed::Int)
-    return (epoch = DateTime(String(cfg["init_epoch"])), mu = μ, R = R,
+    return (epoch = DateTime(String(cfg["init_epoch"])), mu = MU_EARTH, R = R_EARTH,
             member_fields = member_fields, spec_dir = spec_dir, rng = MersenneTwister(seed),
             rng_attitude = MersenneTwister(seed + 1), rng_shape = MersenneTwister(seed + 2))
 end

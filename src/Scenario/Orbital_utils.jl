@@ -6,7 +6,7 @@
 # (también ve getreq, getopt, ELEMENT_KEYS, etc.).
 #
 # Constantes:
-#   J2_EARTH, TROPICAL_YEAR_DAYS
+#   TROPICAL_YEAR_DAYS (J2_EARTH, de Constants)
 #
 # Funciones:
 #   sma_ecc_from_altitudes  : (altitud) o (perigeo, apogeo) -> (SMA, ECC).
@@ -28,9 +28,6 @@
 # Los ejemplos de los docstrings usan este contexto:
 #   ctx = (R = 6378.1363, mu = 398600.4415, epoch = DateTime("2000-01-01T11:59:28"))
 # =============================================================================
-
-# J2 de la Tierra (EGM2008, sin normalizar); solo se usa para la inclinación SSO
-const J2_EARTH = 1.08262668e-3
 
 # Duración del año trópico en días; el nodo de una SSO debe seguir al Sol medio
 const TROPICAL_YEAR_DAYS = 365.2421897
