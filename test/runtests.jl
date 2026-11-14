@@ -19,6 +19,7 @@ using Test
 # Archivos de prueba, de los módulos más básicos a los que dependen de más módulos
 const TEST_FILES = [
     "test_transformations.jl",
+    "test_integrators.jl",
     "test_propagator.jl",
     "test_visibility.jl",
     "test_attitude.jl",

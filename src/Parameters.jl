@@ -12,6 +12,7 @@ module Parameters
 #
 # Parámetros:
 #   RANDOM_W_RANGE_DEG_S        : rango [mín, máx] de |ω| (°/s) del modo de actitud "random"
+#   ATTITUDE_MAX_STEP_DEG       : ángulo máximo girado en un subpaso del RK4 de la actitud (°)
 #   SHAPE_LC_MIN_M              : longitud característica mínima de los objetivos sorteados (m)
 #   SHAPE_CLASS_COUNTS          : número de objetos catalogados por clase (ESA, LEO, > 10 cm)
 #   SHAPE_WEIGHTS_BY_CLASS      : probabilidad de cada forma dentro de cada clase
@@ -29,7 +30,7 @@ module Parameters
 # Dependencias: ninguna (se puede incluir antes que cualquier otro módulo).
 # =============================================================================
 
-export RANDOM_W_RANGE_DEG_S
+export RANDOM_W_RANGE_DEG_S, ATTITUDE_MAX_STEP_DEG
 export SHAPE_LC_MIN_M, SHAPE_CLASS_COUNTS, SHAPE_WEIGHTS_BY_CLASS
 export FRAGMENT_LC_BREAKS_M, FRAGMENT_LC_BETAS
 export PAYLOAD_AREA_BINS_M2, ROCKET_BODY_AREA_BINS_M2, MISSION_RELATED_LC_RANGE_M
@@ -43,6 +44,12 @@ export CYLINDER_HR_RANGE, CONE_HR_RANGE, TRUNK_HR_RANGE, TRUNK_RADIUS_RATIO_RANG
 # Rango de |ω| (°/s) del modo "random"; se sortea uniforme dentro de él.
 # Acordado con el tutor (0.5–5 °/s), del orden de lo observado en basura espacial en LEO.
 const RANDOM_W_RANGE_DEG_S = (0.5, 5.0)
+
+# Ángulo máximo (°) que gira el cuerpo en un subpaso del RK4 de la cinemática del cuaternión.
+# El paso de salida (Data_time_step_seconds) se divide en n = ⌈|ω|Δt / θ_max⌉ subpasos, así la
+# precisión no depende de Δt ni de |ω|. Con 1° el error de fase es ≈ 8e-13 rad por subpaso
+# (≈ 3e-10 rad por vuelta completa).
+const ATTITUDE_MAX_STEP_DEG = 1.0
 
 # -----------------------------------------------------------------------------
 # Forma de los objetivos: tamaño mínimo y clases de objeto

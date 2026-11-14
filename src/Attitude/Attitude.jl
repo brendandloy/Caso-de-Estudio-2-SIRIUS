@@ -22,7 +22,7 @@ module Attitude
 # Scripts que contiene:
 #   Attitude.jl     : este archivo; tipo base, registro de modos, lectura del bloque y autocarga
 #   Quaternions.jl  : parametrizaciones de actitud (cuaternión, Euler, DCM elementales, sorteo
-#                     uniforme) y propagación del cuaternión paso a paso
+#                     uniforme) y propagación del cuaternión paso a paso (RK4 con subpasos)
 #   Frames.jl       : sistemas y direcciones de referencia (LVLH, nadir, Sol...) y método TRIAD
 #   Mount.jl        : montaje de la cámara en el satélite (bloque "camera_mount", C_cb) y C_ci
 #   modes/          : un archivo por modo: fixed.jl, pointing.jl, random.jl, spin.jl, tracking.jl
@@ -47,8 +47,9 @@ module Attitude
 #      datos de fuera de su trayectoria (montaje de la cámara, trayectorias de otros objetos)
 #   No hay que tocar nada más: este módulo incluye todos los .jl de modes/.
 #
-# Dependencias: Types (AttitudeData, TrajectoryData), Parameters (RANDOM_W_RANGE_DEG_S)
-# y JSONUtils (lectores de bloques), que deben estar cargados antes.
+# Dependencias: Types (AttitudeData, TrajectoryData), Parameters (RANDOM_W_RANGE_DEG_S,
+# ATTITUDE_MAX_STEP_DEG), Integrators (runge_kutta_4) y JSONUtils (lectores de bloques),
+# que deben estar cargados antes.
 # =============================================================================
 
 export AttitudeSpec, register_attitude!, parse_attitude, parse_member_attitude
@@ -57,6 +58,8 @@ export camera_mount_block, parse_camera_mount, camera_dcm_history
 
 using ..Types: AttitudeData, TrajectoryData
 using ..Parameters: RANDOM_W_RANGE_DEG_S         # rango de |ω| del modo "random" (parámetro maestro)
+using ..Parameters: ATTITUDE_MAX_STEP_DEG        # ángulo máximo por subpaso del RK4 (parámetro maestro)
+using ..Integrators: runge_kutta_4                # paso de la cinemática del cuaternión
 using ..JSONUtils     # lectores de bloques: todict, check_keys, getnum, getvec, getunit, get_or_draw_seed
 
 using LinearAlgebra

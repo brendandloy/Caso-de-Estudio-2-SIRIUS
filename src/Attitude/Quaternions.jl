@@ -19,7 +19,8 @@
 # Funciones:
 #   skew, quat_to_dcm, elementary_dcm, euler_to_dcm  : parametrizaciones -> DCM
 #   dcm_to_quat                                     : DCM -> cuaternión (método de Shepperd)
-#   omega_matrix, quat_step                         : propagación del cuaternión paso a paso
+#   omega_matrix, quaternion_rate                   : cinemática del cuaternión (T6, diap. 49)
+#   attitude_substeps, quat_step                    : propagación paso a paso con RK4 y subpasos
 #   parse_orientation                               : lee "q" o "euler_deg" + "sequence" de un bloque
 #   random_quaternion, random_unit_vector           : sorteo uniforme de actitudes y ejes
 # =============================================================================
@@ -136,27 +137,60 @@ function omega_matrix(ω::AbstractVector)
 end
 
 """
+    quaternion_rate(q, ω) -> SVector{4,Float64}
+
+Derivada del cuaternión, `q̇ = ½ Ω(ω) q` (T6, diap. 49), con ω en ejes cuerpo (rad/s).
+Es el segundo miembro que integra `quat_step`.
+"""
+quaternion_rate(q::SVector{4,Float64}, ω::AbstractVector) = 0.5 * (omega_matrix(ω) * q)
+
+"""
+    attitude_substeps(ω, Δt) -> Int
+
+Número de subpasos del RK4 para avanzar `Δt` con velocidad angular `ω`, de modo que en
+cada subpaso el cuerpo gire como mucho `ATTITUDE_MAX_STEP_DEG`: `n = ⌈|ω| Δt / θ_max⌉ ≥ 1`.
+
+Por qué existe: el error del RK4 depende del ángulo girado por paso (≈ θ⁵), no del tiempo;
+sin subpasos, con el paso de salida de la simulación (p. ej. 120 s a 2 °/s, 240°) el
+resultado no valdría.
+
+# Argumentos
+- `ω::AbstractVector`: velocidad angular en ejes cuerpo (rad/s).
+- `Δt::Real`: intervalo que se quiere avanzar (s).
+
+# Devuelve
+- `Int` ≥ 1.
+
+# Excepciones
+- Ninguna.
+
+# Ejemplo
+```julia
+attitude_substeps(SVector(0, 0, deg2rad(2)), 120.0)      # 240 (con θ_max = 1°)
+```
+"""
+function attitude_substeps(ω::AbstractVector, Δt::Real)
+    θ = norm(ω) * abs(Δt)                                 # ángulo girado en el intervalo (rad)
+    return max(1, ceil(Int, θ / deg2rad(ATTITUDE_MAX_STEP_DEG)))
+end
+
+"""
     quat_step(q, ω, Δt) -> SVector{4,Float64}
 
-Avanza el cuaternión un paso de tiempo `Δt` con ω constante durante el paso:
+Avanza el cuaternión un intervalo `Δt` integrando la cinemática del T6 (diap. 49),
+`q̇ = ½ Ω(ω) q`, con Runge-Kutta 4 (`runge_kutta_4`). El intervalo se divide en
+`attitude_substeps(ω, Δt)` subpasos iguales y el cuaternión se renormaliza tras cada
+uno, porque el RK4 no conserva |q| = 1 de forma exacta.
 
-    q(t + Δt) = exp(½ Ω(ω) Δt) · q(t)
-              = [cos(|ω|Δt/2) I₄ + sin(|ω|Δt/2)/|ω| · Ω(ω)] · q(t)
-
-Es la solución exacta de `q̇ = ½ Ω(ω) q` para ω constante: como `Ω² = -|ω|² I₄`, la
-serie de la exponencial se separa en términos pares (coseno) e impares (seno).
-Equivale a componer q con un giro de ángulo |ω|Δt alrededor de ω/|ω|.
-
-Después se renormaliza: la operación conserva la norma en aritmética exacta, pero el
-redondeo en coma flotante (~1e-16 por paso) se acumularía paso a paso.
-
-Si en el futuro ω varía (dinámica con inercia), la misma función sirve con el ω de
-cada paso; entonces es una aproximación de primer orden en `Δt`.
+Con ω constante, como la ecuación es lineal, un subpaso de RK4 es el desarrollo de Taylor
+de la solución exacta `exp(½ Ω h)` truncado en cuarto orden; el error de fase por subpaso
+es ≈ 8e-13 rad con θ_max = 1°. Se usa RK4 y no la exponencial porque sirve igual cuando ω
+varíe en el paso (dinámica con inercia, ecuaciones de Euler).
 
 # Argumentos
 - `q::AbstractVector`: cuaternión actual (C_bi, escalar primero).
-- `ω::AbstractVector`: velocidad angular en ejes cuerpo durante el paso (rad/s).
-- `Δt::Real`: paso de tiempo (s).
+- `ω::AbstractVector`: velocidad angular en ejes cuerpo durante el intervalo (rad/s).
+- `Δt::Real`: intervalo de tiempo (s).
 
 # Devuelve
 - `SVector{4,Float64}` unitario.
@@ -172,13 +206,16 @@ quat_to_dcm(q1)' * [1, 0, 0]                                              # ≈ 
 """
 function quat_step(q::AbstractVector, ω::AbstractVector, Δt::Real)
     q4 = SVector{4,Float64}(q)
-    wn = norm(ω)
-    iszero(wn) && return q4                               # sin giro: no cambia
+    iszero(norm(ω)) && return q4                          # sin giro: no cambia
 
-    a = 0.5 * wn * Δt                                     # mitad del ángulo girado en el paso
-    E = cos(a) * SMatrix{4,4,Float64,16}(I) + (sin(a) / wn) * omega_matrix(ω)
-    qn = E * q4
-    return qn / norm(qn)                                  # renormalización
+    n = attitude_substeps(ω, Δt)
+    h = Δt / n                                            # subpaso (s)
+    kinematics(x, _) = quaternion_rate(x, ω)              # ω constante en el intervalo
+    for _ in 1:n
+        q4 = runge_kutta_4(kinematics, q4, 0.0, h)
+        q4 = q4 / norm(q4)                                # renormalización
+    end
+    return q4
 end
 
 """

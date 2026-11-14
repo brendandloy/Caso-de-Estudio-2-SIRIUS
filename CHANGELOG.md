@@ -4,6 +4,16 @@ Cambios relevantes de SIRIUS en el Caso de Estudio 2. Formato basado en [Keep a 
 
 ## [Sin publicar]
 
+### 2026-11-14
+#### Añadido
+- `src/Integrators.jl` (módulo `Integrators`): `runge_kutta_4(f, x, t, h)`, un paso de Runge-Kutta 4 de paso fijo para cualquier estado (número, `SVector`…). Ver `?runge_kutta_4`.
+- `Parameters.ATTITUDE_MAX_STEP_DEG = 1.0`: ángulo máximo (°) que gira el cuerpo en un subpaso del RK4 de la actitud.
+- `test/test_integrators.jl`: exactitud con polinomios, orden 4 y estado vectorial.
+
+#### Cambiado
+- La actitud de los modos `spin` y `random` se propaga con RK4 (`quat_step`) en lugar de la solución exacta `exp(½ Ω Δt)`, como se acordó con el tutor, para que sirva también con ω variable. Cada intervalo de salida se divide en ⌈|ω|Δt/θ_max⌉ subpasos (`attitude_substeps`), así la precisión no depende de `Data_time_step_seconds`; el error es ≈ 3e-10 rad por vuelta, y los resultados cambian en ese orden.
+- `test_attitude.jl`, `test_geometry.jl`, `test_scenario.jl` y `scripts/generate_config.jl` cargan también `Integrators.jl` (lo usa Attitude).
+
 ### 2026-11-06
 #### Añadido
 - `test/runtests.jl`: ejecuta todas las pruebas, cada archivo en su propio módulo; `Test` añadido como dependencia de pruebas en `Project.toml`, así que funciona `] test`.

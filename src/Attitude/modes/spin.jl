@@ -14,9 +14,10 @@
 #   en las convenciones del T6. Sin ella, los ejes cuerpo coinciden con ECI en t = 0.
 #
 # Modelo: se propaga el cuaternión con la ecuación cinemática del T6 (diap. 49),
-# q̇ = ½ Ω(ω_b) q, paso a paso: q_{k+1} = exp(½ Ω Δt_k) q_k, renormalizando en cada
-# paso (quat_step). Con ω_b = ω ê constante esta actualización es exacta: equivale a
-# C_ib(t) = C_ib(0) · R(ê, ω t). La DCM cuerpo -> ECI de cada instante es C(q)ᵀ.
+# q̇ = ½ Ω(ω_b) q, con RK4 entre cada par de instantes de salida, en subpasos de como
+# mucho ATTITUDE_MAX_STEP_DEG y renormalizando tras cada uno (quat_step). Con ω_b = ω ê
+# constante la solución exacta es C_ib(t) = C_ib(0) · R(ê, ω t); el RK4 la reproduce con
+# un error ≈ 3e-10 rad por vuelta. La DCM cuerpo -> ECI de cada instante es C(q)ᵀ.
 # No se modela la inercia: el giro solo es dinámicamente consistente si ê es un eje
 # principal de inercia (hipótesis aceptada con el tutor: los objetos se ven como puntos).
 #
@@ -88,8 +89,8 @@ end
     spin_history(q0, axis_b, w_rad_s, t) -> Vector{SMatrix{3,3,Float64,9}}
 
 Historia de la DCM cuerpo -> ECI de un cuerpo que gira con ω constante en ejes
-cuerpo, propagando el cuaternión paso a paso con `quat_step`:
-`q_k = exp(½ Ω(ω) (t_k - t_{k-1})) · q_{k-1}` y `DCM_b2i(t_k) = C(q_k)ᵀ`.
+cuerpo, propagando el cuaternión entre instantes con `quat_step` (RK4 con subpasos)
+y `DCM_b2i(t_k) = C(q_k)ᵀ`.
 
 Por qué existe: la comparten los modos `spin` y `random` (este último solo
 sortea las condiciones iniciales).

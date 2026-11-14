@@ -9,7 +9,7 @@
 # Uso (desde la raíz del repositorio):
 #   julia --project=. test/test_scenario.jl
 #
-# Carga Types, Constants, Parameters, JSON_utils, Transformations, Attitude,
+# Carga Types, Constants, Parameters, Integrators, JSON_utils, Transformations, Attitude,
 # Geometry y Scenario. El generador imprime las formas sorteadas; es normal.
 #
 # Funciones: spec
@@ -24,6 +24,7 @@ const ROOT = normpath(joinpath(@__DIR__, ".."))
 isdefined(Main, :Types)           || include(joinpath(ROOT, "src", "Types.jl"))
 isdefined(Main, :Constants)       || include(joinpath(ROOT, "src", "Constants.jl"))
 isdefined(Main, :Parameters)      || include(joinpath(ROOT, "src", "Parameters.jl"))
+isdefined(Main, :Integrators)     || include(joinpath(ROOT, "src", "Integrators.jl"))
 isdefined(Main, :JSONUtils)       || include(joinpath(ROOT, "src", "JSON_utils.jl"))
 isdefined(Main, :Transformations) || include(joinpath(ROOT, "src", "Transformations.jl"))
 isdefined(Main, :Attitude)        || include(joinpath(ROOT, "src", "Attitude", "Attitude.jl"))

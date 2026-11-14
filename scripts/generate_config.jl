@@ -9,7 +9,7 @@
 #
 # Por defecto: config/specs/ejemplo_leo.json -> config/generated/ejemplo_leo.json
 #
-# Es ligero a propósito: solo carga Types, Constants, Transformations, Parameters, Attitude, Geometry y Scenario
+# Es ligero a propósito: solo carga Types, Constants, Transformations, Parameters, Integrators, Attitude, Geometry y Scenario
 # (no GLMakie ni DifferentialEquations). Scenario hace `using ..Constants`,
 # `using ..Transformations` y `using ..Attitude`, que aquí resuelven a los módulos de Main.
 # Transformations aporta theta0_from_utc, la misma rotación terrestre que usa el simulador,
@@ -27,6 +27,7 @@ isdefined(Main, :Types)           || include(joinpath(ROOT, "src", "Types.jl"))
 isdefined(Main, :Constants)       || include(joinpath(ROOT, "src", "Constants.jl"))
 isdefined(Main, :Transformations) || include(joinpath(ROOT, "src", "Transformations.jl"))
 isdefined(Main, :Parameters)      || include(joinpath(ROOT, "src", "Parameters.jl"))
+isdefined(Main, :Integrators)     || include(joinpath(ROOT, "src", "Integrators.jl"))
 isdefined(Main, :JSONUtils)       || include(joinpath(ROOT, "src", "JSON_utils.jl"))
 isdefined(Main, :Attitude)        || include(joinpath(ROOT, "src", "Attitude", "Attitude.jl"))
 isdefined(Main, :Geometry)        || include(joinpath(ROOT, "src", "Geometry", "Geometry.jl"))

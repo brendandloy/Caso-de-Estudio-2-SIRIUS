@@ -9,7 +9,7 @@
 # Uso (desde la raíz del repositorio):
 #   julia --project=. test/test_geometry.jl
 #
-# Es ligero: solo carga Types, Constants, Parameters, Transformations, Attitude
+# Es ligero: solo carga Types, Constants, Parameters, Integrators, Transformations, Attitude
 # (lectores de bloques) y Geometry. Las mallas de prueba usan dimensiones
 # arbitrarias: las fórmulas no dependen de la unidad.
 #
@@ -28,6 +28,7 @@ isdefined(Main, :Types)           || include(joinpath(ROOT, "src", "Types.jl"))
 isdefined(Main, :Constants)       || include(joinpath(ROOT, "src", "Constants.jl"))
 isdefined(Main, :Transformations) || include(joinpath(ROOT, "src", "Transformations.jl"))
 isdefined(Main, :Parameters)      || include(joinpath(ROOT, "src", "Parameters.jl"))
+isdefined(Main, :Integrators)     || include(joinpath(ROOT, "src", "Integrators.jl"))
 isdefined(Main, :JSONUtils)       || include(joinpath(ROOT, "src", "JSON_utils.jl"))
 isdefined(Main, :Attitude)        || include(joinpath(ROOT, "src", "Attitude", "Attitude.jl"))
 isdefined(Main, :Geometry)        || include(joinpath(ROOT, "src", "Geometry", "Geometry.jl"))

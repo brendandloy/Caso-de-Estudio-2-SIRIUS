@@ -8,7 +8,8 @@
 # Uso (desde la raíz del repositorio):
 #   julia --project=. test/test_attitude.jl
 #
-# Es ligero: solo carga Types, Constants, Transformations, Parameters y Attitude.
+# Es ligero: solo carga Types, Constants, Transformations, Parameters, Integrators,
+# JSONUtils y Attitude.
 # La trayectoria de prueba es una órbita circular kepleriana analítica.
 #
 # Funciones: circular_traj, axis_angle_rotation, old_propagate_attitude
@@ -26,6 +27,7 @@ isdefined(Main, :Types)           || include(joinpath(ROOT, "src", "Types.jl"))
 isdefined(Main, :Constants)       || include(joinpath(ROOT, "src", "Constants.jl"))
 isdefined(Main, :Transformations) || include(joinpath(ROOT, "src", "Transformations.jl"))
 isdefined(Main, :Parameters)      || include(joinpath(ROOT, "src", "Parameters.jl"))
+isdefined(Main, :Integrators)     || include(joinpath(ROOT, "src", "Integrators.jl"))
 isdefined(Main, :JSONUtils)       || include(joinpath(ROOT, "src", "JSON_utils.jl"))
 isdefined(Main, :Attitude)        || include(joinpath(ROOT, "src", "Attitude", "Attitude.jl"))
 
@@ -153,9 +155,10 @@ maxerr(A1, A2) = maximum(maximum(abs.(a - b)) for (a, b) in zip(A1, A2))
     end
 
     @testset "spin" begin
-        # Compatibilidad: mismo resultado que el antiguo propagate_attitude
+        # Compatibilidad: mismo resultado que el antiguo propagate_attitude (rotación exacta).
+        # 30 °/s durante 720 s son 21 600 subpasos de RK4 de 1°: error esperado ≈ 2e-8
         spec = parse_attitude(Dict("type" => "spin", "w_deg_s" => 30, "w_dir" => [1, 0, 0]), "deb")
-        @test maxerr(compute_attitude(spec, TRAJ, SUN).DCM_b2i, old_propagate_attitude(deg2rad(30), SVector(1.0, 0, 0), T)) < 1e-10
+        @test maxerr(compute_attitude(spec, TRAJ, SUN).DCM_b2i, old_propagate_attitude(deg2rad(30), SVector(1.0, 0, 0), T)) < 1e-7
 
         # Sin giro: identidad constante (como los JSON antiguos con w_deg_s = 0)
         spec0 = parse_attitude(Dict("type" => "spin", "w_deg_s" => 0), "deb")
@@ -209,12 +212,22 @@ maxerr(A1, A2) = maximum(maximum(abs.(a - b)) for (a, b) in zip(A1, A2))
         q180 = SVector(0.0, 0.0, 1.0, 0.0)                              # 180° alrededor de y
         @test A.dcm_to_quat(A.quat_to_dcm(q180)) ≈ q180
 
-        # Paso a paso = solución analítica de salto único C_ib(t) = C_ib(0)·R(ê, ωt) (ω constante)
+        # RK4 paso a paso ≈ solución analítica de salto único C_ib(t) = C_ib(0)·R(ê, ωt) (ω constante).
+        # Un día a 4 °/s son ≈ 3.5e5 subpasos de 1°: error esperado ≈ 1.5e-7
         q0, ê, w = A.random_quaternion(rng), A.random_unit_vector(rng), deg2rad(4.0)
         tt = collect(0.0:2.0:86400.0)                                    # un día cada 2 s (43 201 pasos)
         Dstep = A.spin_history(q0, ê, w, tt)
         C0 = A.quat_to_dcm(q0)'
-        @test maximum(maximum(abs.(Dstep[k] - C0 * axis_angle_rotation(ê, w * tt[k]))) for k in eachindex(tt)) < 1e-9
+        @test maximum(maximum(abs.(Dstep[k] - C0 * axis_angle_rotation(ê, w * tt[k]))) for k in eachindex(tt)) < 1e-6
+
+        # Subpasos: el intervalo de salida se divide para que cada subpaso gire ≤ ATTITUDE_MAX_STEP_DEG
+        ωz = SVector(0.0, 0.0, deg2rad(2.0))
+        @test A.attitude_substeps(ωz, 120.0) == ceil(Int, 240 / ATTITUDE_MAX_STEP_DEG)
+        @test A.attitude_substeps(SVector(0.0, 0.0, 0.0), 120.0) == 1
+        # Paso de salida largo (120 s a 2 °/s = 240°): sin subpasos el RK4 daría un error ≈ 0.2
+        ê2 = normalize(SVector(1.0, 2.0, 2.0))
+        q120 = A.quat_step(SVector(1.0, 0.0, 0.0, 0.0), deg2rad(2.0) * ê2, 120.0)
+        @test maximum(abs.(A.quat_to_dcm(q120)' - axis_angle_rotation(ê2, deg2rad(240.0)))) < 1e-9
 
         # La norma se mantiene en 1 tras muchos pasos (renormalización)
         q = q0

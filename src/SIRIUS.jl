@@ -7,6 +7,7 @@ module SIRIUS
 include("Types.jl")
 include("Constants.jl")
 include("Parameters.jl")          # parámetros maestros del programa (no los elige el usuario)
+include("Integrators.jl")         # integradores de paso fijo (RK4); antes que Attitude
 include("JSON_utils.jl")          # lectores y validadores de bloques del JSON; antes que Attitude
 include("Transformations.jl")
 include("Attitude/Attitude.jl")     # actitud de los objetivos; Environment la usa al leer el JSON
@@ -27,6 +28,7 @@ include("Simulation.jl")          # flujo completo de la simulación (run_spec, 
 using .Types
 using .Constants
 using .Parameters
+using .Integrators
 using .Transformations
 using .Attitude
 using .Scenario
