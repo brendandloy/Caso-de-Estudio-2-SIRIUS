@@ -205,12 +205,20 @@ maxerr(A1, A2) = maximum(maximum(abs.(a - b)) for (a, b) in zip(A1, A2))
         ω = SVector(0.3, -0.2, 0.5)
         @test A.omega_matrix(ω)^2 ≈ -dot(ω, ω) * I
 
-        # DCM -> cuaternión -> DCM, incluidos giros de ≈ 180° (q_η ≈ 0, donde falla la fórmula directa)
+        # DCM -> cuaternión -> DCM con la fórmula del T6 (diap. 36), lejos de 180° (q_η > 0.01)
         rng = MersenneTwister(2)
-        qs = [A.random_quaternion(rng) for _ in 1:1000]
+        qs = filter(q -> q[1] > 0.01, [A.random_quaternion(rng) for _ in 1:1000])
         @test all(isapprox(A.quat_to_dcm(A.dcm_to_quat(A.quat_to_dcm(q))), A.quat_to_dcm(q); atol = 1e-12) for q in qs)
+        @test A.dcm_to_quat(A.elementary_dcm(3, π/2)) ≈ SVector(cosd(45), 0, 0, sind(45))
+
+        # Giro de 180° (q_η = 0): la fórmula del T6 divide por q_η, así que da error
         q180 = SVector(0.0, 0.0, 1.0, 0.0)                              # 180° alrededor de y
-        @test A.dcm_to_quat(A.quat_to_dcm(q180)) ≈ q180
+        @test_throws ErrorException A.dcm_to_quat(A.quat_to_dcm(q180))
+        # En spin, el mismo giro dado como "q" no pasa por la fórmula; con Euler, error claro
+        s180 = parse_attitude(Dict("type" => "spin", "w_deg_s" => 0, "q" => [0, 0, 1, 0]), "deb")
+        @test compute_attitude(s180, TRAJ, SUN).DCM_b2i[1] ≈ A.quat_to_dcm(q180)'
+        @test_throws ErrorException parse_attitude(Dict("type" => "spin", "w_deg_s" => 0,
+                                                        "euler_deg" => [180, 0, 0], "sequence" => "321"), "deb")
 
         # RK4 paso a paso ≈ solución analítica de salto único C_ib(t) = C_ib(0)·R(ê, ωt) (ω constante).
         # Un día a 4 °/s son ≈ 3.5e5 subpasos de 1°: error esperado ≈ 1.5e-7

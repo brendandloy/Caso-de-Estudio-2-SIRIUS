@@ -21,7 +21,7 @@
 # No se modela la inercia: el giro solo es dinámicamente consistente si ê es un eje
 # principal de inercia (hipótesis aceptada con el tutor: los objetos se ven como puntos).
 #
-# Funciones: parse_spin, spin_history, compute_attitude(::SpinSpec, ...)
+# Funciones: parse_spin, initial_quaternion, spin_history, compute_attitude(::SpinSpec, ...)
 # =============================================================================
 
 """
@@ -78,11 +78,45 @@ function parse_spin(b::Dict{String,Any}, name::AbstractString)
         Vec3(1.0, 0.0, 0.0)
     end
 
-    # Actitud inicial opcional (C_bi) como cuaternión; por defecto, ejes cuerpo = ECI
+    # Actitud inicial opcional (C_bi); parse_orientation valida el bloque
     C_bi0 = parse_orientation(b, who; required = false)
-    q0 = C_bi0 === nothing ? SVector(1.0, 0.0, 0.0, 0.0) : dcm_to_quat(C_bi0)
+    q0 = initial_quaternion(b, C_bi0, who)
 
     return SpinSpec(q0, axis, deg2rad(w))
+end
+
+"""
+    initial_quaternion(b, C_bi0, who) -> SVector{4,Float64}
+
+Cuaternión inicial del modo `spin`: el `q` del bloque tal cual (normalizado), o el de la
+DCM con la fórmula del T6 (`dcm_to_quat`) si la actitud se dio con ángulos de Euler. Sin
+actitud inicial, la identidad (ejes cuerpo = ECI).
+
+Por qué existe: el `q` del usuario no se convierte a DCM y de vuelta, así un giro de 180°
+escrito como cuaternión no pasa por la fórmula del T6, que divide por q_η ≈ 0.
+
+# Argumentos
+- `b::Dict{String,Any}`: bloque `attitude` (ya validado por `parse_orientation`).
+- `C_bi0`: DCM C_bi inicial, o `nothing` si no se dio.
+- `who::AbstractString`: miembro y modo, para los mensajes de error.
+
+# Devuelve
+- `SVector{4,Float64}` unitario (C_bi, escalar primero).
+
+# Excepciones
+- `ErrorException`: si los ángulos de Euler dan un giro a menos de ≈ 0.1° de 180°.
+"""
+function initial_quaternion(b::Dict{String,Any}, C_bi0, who::AbstractString)
+    C_bi0 === nothing && return SVector(1.0, 0.0, 0.0, 0.0)
+    if haskey(b, "q")
+        q = SVector{4,Float64}(getvec(b, "q", 4, who))
+        return q / norm(q)
+    end
+    try
+        return dcm_to_quat(C_bi0)
+    catch err
+        err isa ErrorException ? error("$who: " * err.msg) : rethrow()
+    end
 end
 
 """

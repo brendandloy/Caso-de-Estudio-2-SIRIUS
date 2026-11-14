@@ -18,7 +18,7 @@
 #
 # Funciones:
 #   skew, quat_to_dcm, elementary_dcm, euler_to_dcm  : parametrizaciones -> DCM
-#   dcm_to_quat                                     : DCM -> cuaternión (método de Shepperd)
+#   dcm_to_quat                                     : DCM -> cuaternión (fórmula del T6, diap. 36)
 #   omega_matrix, quaternion_rate                   : cinemática del cuaternión (T6, diap. 49)
 #   attitude_substeps, quat_step                    : propagación paso a paso con RK4 y subpasos
 #   parse_orientation                               : lee "q" o "euler_deg" + "sequence" de un bloque
@@ -30,6 +30,10 @@ skew(v::AbstractVector) = @SMatrix [0.0 -v[3] v[2]; v[3] 0.0 -v[1]; -v[2] v[1] 0
 
 # Tolerancia para aceptar un cuaternión escrito a mano como unitario (luego se normaliza)
 const QUAT_NORM_TOL = 1e-3
+
+# q_η mínimo para pasar de DCM a cuaternión con la fórmula del T6 (divide por q_η).
+# 1e-3 equivale a un giro a ≈ 0.11° de 180°; por encima, el error de q_v es < 1e-12
+const QUAT_ETA_MIN = 1e-3
 
 """
     quat_to_dcm(q) -> SMatrix{3,3,Float64,9}
@@ -71,20 +75,23 @@ end
 """
     dcm_to_quat(C) -> SVector{4,Float64}
 
-Cuaternión (escalar primero, `q_η >= 0`) de una DCM C_bi. Generaliza la fórmula del
-T6 (diap. 36), `q_η = ½√(1 + tr C)`, `q_v = [C23 - C32, C31 - C13, C12 - C21] / (4 q_η)`,
-con el método de Shepperd: se despeja primero la componente de mayor módulo
-(q_η, q1, q2 o q3) para no dividir por un número pequeño. La fórmula del T6 falla
-cuando q_η ≈ 0, es decir, para giros de ≈ 180°.
+Cuaternión (escalar primero, `q_η > 0`) de una DCM C_bi con la fórmula del T6 (diap. 36):
+
+    q_η = ½ √(1 + tr C),    q_v = [C23 - C32, C31 - C13, C12 - C21] / (4 q_η)
+
+La fórmula divide por q_η = cos(φ/2), que vale 0 en un giro de φ = 180°: cerca de ahí
+q_v pierde precisión (≈ ε/q_η²), así que por debajo de `QUAT_ETA_MIN` se da un error
+en lugar de un resultado impreciso o NaN. Solo afecta a la actitud inicial escrita con
+ángulos de Euler; si se da como `q`, no se convierte (ver `initial_quaternion`).
 
 # Argumentos
 - `C::AbstractMatrix`: DCM 3 × 3 (C_bi, ortogonal y con determinante 1).
 
 # Devuelve
-- `SVector{4,Float64}` unitario con `q_η >= 0` (q y -q son la misma actitud).
+- `SVector{4,Float64}` unitario con `q_η > 0` (q y -q son la misma actitud).
 
 # Excepciones
-- Ninguna (no comprueba que `C` sea una rotación).
+- `ErrorException`: si `q_η < QUAT_ETA_MIN` (giro a menos de ≈ 0.1° de 180°).
 
 # Ejemplo
 ```julia
@@ -92,25 +99,14 @@ dcm_to_quat(elementary_dcm(3, π/2))      # ≈ [0.7071, 0, 0, 0.7071]
 ```
 """
 function dcm_to_quat(C::AbstractMatrix)
-    tr = C[1, 1] + C[2, 2] + C[3, 3]
-    # 4·(componente)² de cada componente: se elige la mayor
-    cand = (1 + tr, 1 + C[1, 1] - C[2, 2] - C[3, 3], 1 - C[1, 1] + C[2, 2] - C[3, 3], 1 - C[1, 1] - C[2, 2] + C[3, 3])
-    k = argmax(cand)
-    s = 0.5 * sqrt(cand[k])                               # componente de mayor módulo
-    f = 0.25 / s
+    tr_C = C[1, 1] + C[2, 2] + C[3, 3]
+    q_eta = 0.5 * sqrt(max(0.0, 1 + tr_C))                # max: el redondeo puede dar 1 + tr C ≈ -1e-16
+    q_eta >= QUAT_ETA_MIN || error("Rotation too close to 180° (q_η = $(round(q_eta, sigdigits = 3))): " *
+        "the T6 formula divides by q_η. Give the orientation as a quaternion 'q' instead.")
 
-    q = if k == 1
-        SVector(s, (C[2, 3] - C[3, 2]) * f, (C[3, 1] - C[1, 3]) * f, (C[1, 2] - C[2, 1]) * f)
-    elseif k == 2
-        SVector((C[2, 3] - C[3, 2]) * f, s, (C[1, 2] + C[2, 1]) * f, (C[1, 3] + C[3, 1]) * f)
-    elseif k == 3
-        SVector((C[3, 1] - C[1, 3]) * f, (C[1, 2] + C[2, 1]) * f, s, (C[2, 3] + C[3, 2]) * f)
-    else
-        SVector((C[1, 2] - C[2, 1]) * f, (C[1, 3] + C[3, 1]) * f, (C[2, 3] + C[3, 2]) * f, s)
-    end
-
-    q = q / norm(q)
-    return q[1] < 0 ? -q : q                              # convenio q_η >= 0
+    f = 0.25 / q_eta
+    q = SVector(q_eta, (C[2, 3] - C[3, 2]) * f, (C[3, 1] - C[1, 3]) * f, (C[1, 2] - C[2, 1]) * f)
+    return q / norm(q)
 end
 
 """
