@@ -42,7 +42,8 @@ module Attitude
 #   2. parse_nuevo(b::Dict{String,Any}, who) -> NuevoSpec           lee y valida el bloque
 #      (who = "Objective 'deb'" u "Observer 'cam1'", para los mensajes de error)
 #   3. compute_attitude(spec::NuevoSpec, traj, sun_dir) -> AttitudeData
-#   4. register_attitude!("nuevo", parse_nuevo)
+#   4. register_attitude!("nuevo", parse_nuevo), o con roles = ("Objective",) u ("Observer",)
+#      si el modo solo tiene sentido para objetivos u observadores (por defecto, ambos)
 #   5. (opcional) bind_attitude(spec::NuevoSpec, ctx) -> NuevoSpec, si el modo necesita
 #      datos de fuera de su trayectoria (montaje de la cámara, trayectorias de otros objetos)
 #   No hay que tocar nada más: este módulo incluye todos los .jl de modes/.
@@ -80,8 +81,31 @@ abstract type AttitudeSpec end
 # Nombre del modo ("spin", "random"...) -> función que lee su bloque
 const ATTITUDES = Dict{String,Function}()
 
-# Registra la función que lee el bloque de un modo; devuelve nothing
-register_attitude!(name::AbstractString, f::Function) = (ATTITUDES[String(name)] = f; nothing)
+# Nombre del modo -> roles que lo pueden usar ("Objective", "Observer")
+const ATTITUDE_ROLES = Dict{String,Tuple{Vararg{String}}}()
+
+"""
+    register_attitude!(name, f; roles=("Objective", "Observer")) -> Nothing
+
+Registra la función `f(b, who)` que lee el bloque de un modo de actitud y los roles
+(objetivos, observadores o ambos) que lo pueden usar.
+
+# Argumentos
+- `name::AbstractString`: valor de `type` en el bloque `attitude` (p. ej. `"spin"`).
+- `f::Function`: función que lee y valida el bloque.
+- `roles`: `"Objective"` y/o `"Observer"`; por defecto, los dos.
+
+# Devuelve
+- `nothing`.
+
+# Excepciones
+- Ninguna.
+"""
+function register_attitude!(name::AbstractString, f::Function; roles = ("Objective", "Observer"))
+    ATTITUDES[String(name)] = f
+    ATTITUDE_ROLES[String(name)] = Tuple(String.(roles))
+    return nothing
+end
 
 # -----------------------------------------------------------------------------
 # Lectura del bloque "attitude"
@@ -95,13 +119,14 @@ Lee y valida un bloque `attitude` con el modo indicado en su campo `type`.
 # Argumentos
 - `block::AbstractDict`: bloque `attitude` (de JSON3 o de un `Dict`).
 - `name::AbstractString`: nombre del objetivo u observador, para los mensajes de error.
-- `role::AbstractString`: `"Objective"` u `"Observer"`; solo cambia el texto de los mensajes.
+- `role::AbstractString`: `"Objective"` u `"Observer"`: texto de los mensajes y modos admitidos.
 
 # Devuelve
 - Un subtipo de `AttitudeSpec` (`SpinSpec`, `RandomSpec`, `FixedSpec`, `PointingSpec`, `TrackingSpec`...).
 
 # Excepciones
-- `ErrorException`: si el bloque no es un diccionario, no tiene `type` o el modo no existe.
+- `ErrorException`: si el bloque no es un diccionario, no tiene `type`, el modo no existe
+  o no está disponible para ese rol (p. ej. `random` en un observador).
 - `ErrorException`: cualquier error de validación del modo elegido.
 
 # Ejemplo
@@ -120,6 +145,9 @@ function parse_attitude(block, name::AbstractString; role::AbstractString = "Obj
     mode = String(b["type"])
     haskey(ATTITUDES, mode) || error(
         "$who: unknown attitude type '$mode'. Available: " * join(sort!(collect(keys(ATTITUDES))), ", "))
+    role in ATTITUDE_ROLES[mode] || error(
+        "$who: attitude type '$mode' is not available for this role. Available: " *
+        join(sort!([m for (m, r) in ATTITUDE_ROLES if role in r]), ", "))
 
     return ATTITUDES[mode](b, who)
 end

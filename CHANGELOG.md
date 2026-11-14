@@ -14,6 +14,10 @@ Cambios relevantes de SIRIUS en el Caso de Estudio 2. Formato basado en [Keep a 
 - La actitud de los modos `spin` y `random` se propaga con RK4 (`quat_step`) en lugar de la solución exacta `exp(½ Ω Δt)`, como se acordó con el tutor, para que sirva también con ω variable. Cada intervalo de salida se divide en ⌈|ω|Δt/θ_max⌉ subpasos (`attitude_substeps`), así la precisión no depende de `Data_time_step_seconds`; el error es ≈ 3e-10 rad por vuelta, y los resultados cambian en ese orden.
 - `test_attitude.jl`, `test_geometry.jl`, `test_scenario.jl` y `scripts/generate_config.jl` cargan también `Integrators.jl` (lo usa Attitude).
 - `dcm_to_quat` usa la fórmula del T6 (diap. 36) en lugar del método de Shepperd, como se acordó con el tutor. Como divide por q_η = cos(φ/2), da un error claro si q_η < `QUAT_ETA_MIN` = 1e-3 (giro a menos de ≈ 0,1° de 180°). Solo afecta a la actitud inicial del modo `spin` escrita con ángulos de Euler: si se da como `q`, ahora se usa tal cual (`initial_quaternion`), sin pasar por la DCM. Los resultados no cambian.
+- `register_attitude!` admite `roles` para indicar si un modo vale para objetivos, observadores o ambos (por defecto, ambos); `parse_attitude` da error si el modo no está disponible para el rol. `tracking` se registra solo para observadores: el error en un objetivo sale ahora al leer el bloque, en lugar de en `bind_attitude`.
+
+#### Eliminado
+- Modo de actitud `random` en los observadores, como pidió el tutor: un satélite observador no gira al azar y tiene direcciones de referencia (Tierra, Sol, órbita) para definir su actitud. Sigue disponible para los objetivos.
 
 ### 2026-11-06
 #### Añadido

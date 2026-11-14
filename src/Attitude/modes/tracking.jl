@@ -117,7 +117,7 @@ también que el objetivo existe.
 - `TrackingSpec` con `boresight_b` y, si había trayectorias, `objective_traj`.
 
 # Excepciones
-- `ErrorException`: si no hay cámara (el modo se usa en un objetivo), si `roll.body_axis`
+- `ErrorException`: si no se da el montaje de la cámara, si `roll.body_axis`
   es paralelo al boresight o si el objetivo no existe (el mensaje lista los disponibles).
 
 # Ejemplo
@@ -128,8 +128,8 @@ spec = bind_attitude(spec, (camera_mount = C_cb, objective_names = keys(trajs), 
 function bind_attitude(spec::TrackingSpec, ctx)
     who = "$(spec.who) (attitude 'tracking')"
 
-    # Sin cámara no hay boresight que apuntar: el modo es solo para observadores
-    ctx.camera_mount === nothing && error("$who: 'tracking' is only available for observers (it points the camera).")
+    # Sin montaje de la cámara no hay boresight que apuntar (en un objetivo ya falla parse_attitude)
+    ctx.camera_mount === nothing && error("$who: the camera mount (ctx.camera_mount) is needed to point the boresight.")
     C_cb = Mat3(ctx.camera_mount)
     b_cam = Vec3(C_cb[3, 1], C_cb[3, 2], C_cb[3, 3])            # boresight en ejes cuerpo (fila 3 de C_cb)
     norm(cross(b_cam, spec.roll_axis)) > 1e-8 ||
@@ -194,4 +194,4 @@ function compute_attitude(spec::TrackingSpec, traj::TrajectoryData, sun_dir::Abs
     return AttitudeData(DCM_b2i)
 end
 
-register_attitude!("tracking", parse_tracking)
+register_attitude!("tracking", parse_tracking; roles = ("Observer",))

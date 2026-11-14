@@ -1,8 +1,10 @@
 # =============================================================================
 # random.jl
 #
-# Modo "random": actitud inicial y giro aleatorios, típico de basura espacial.
-# Sortea las condiciones iniciales y luego se propaga igual que "spin".
+# Modo "random" (solo objetivos): actitud inicial y giro aleatorios, típico de basura
+# espacial. Sortea las condiciones iniciales y luego se propaga igual que "spin".
+# No está disponible para los observadores: un satélite observador no gira al azar y
+# tiene direcciones de referencia (Tierra, Sol, órbita) para definir su actitud.
 #
 #   "attitude": {"type": "random", "seed": 42}
 #
@@ -128,4 +130,4 @@ function compute_attitude(spec::RandomSpec, traj::TrajectoryData, sun_dir::Abstr
     return AttitudeData(spin_history(st.q0, st.axis_b, st.w_rad_s, traj.t))
 end
 
-register_attitude!("random", parse_random)
+register_attitude!("random", parse_random; roles = ("Objective",))

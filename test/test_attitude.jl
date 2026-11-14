@@ -194,6 +194,10 @@ maxerr(A1, A2) = maximum(maximum(abs.(a - b)) for (a, b) in zip(A1, A2))
         # El rango ya no se da en el JSON
         @test_throws ErrorException parse_attitude(merge(b, Dict("w_range_deg_s" => [0, 5])), "deb")
 
+        # Solo objetivos: en un observador es un error
+        @test_throws ErrorException parse_attitude(b, "cam1"; role = "Observer")
+        @test parse_attitude(Dict("type" => "spin", "w_deg_s" => 0), "cam1"; role = "Observer") isa AttitudeSpec
+
         # Orientación uniforme: la media de las DCM sobre todas las rotaciones es la matriz nula
         rng = MersenneTwister(1)
         M = sum(A.quat_to_dcm(A.random_quaternion(rng)) for _ in 1:20000) / 20000
@@ -337,7 +341,8 @@ maxerr(A1, A2) = maximum(maximum(abs.(a - b)) for (a, b) in zip(A1, A2))
             end
         end
 
-        # Errores: sin cámara (objetivo), objetivo desconocido, roll paralelo al boresight, sin bind
+        # Errores: en un objetivo, sin cámara, objetivo desconocido, roll paralelo al boresight, sin bind
+        @test_throws ErrorException parse_attitude(b, "deb")                     # solo observadores
         C_cb = A.parse_camera_mount(A.DEFAULT_CAMERA_MOUNT, "cam1")
         @test_throws ErrorException bind_attitude(spec, (camera_mount = nothing, objective_names = nothing, trajectories = nothing))
         @test_throws ErrorException bind_attitude(spec, (camera_mount = C_cb, objective_names = ["deb2"], trajectories = nothing))
