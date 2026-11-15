@@ -22,6 +22,16 @@ module Parameters
 #   ROCKET_BODY_AREA_BINS_M2    : histogramas de área media de satélites y etapas (ESA, LEO)
 #   MISSION_RELATED_LC_RANGE_M  : rango de L_c de los objetos de misión (log-uniforme)
 #   PRISM_RATIO_RANGE ... TRUNK_RADIUS_RATIO_RANGE : proporciones de cada forma
+#   OPTICS_BODY, OPTICS_TOP, OPTICS_PANEL : distribución de los coeficientes ópticos por material
+#   SPHERE_MESH_DIVISIONS ... FRAGMENT_NUM_POINTS_RANGE : resolución de las mallas
+#   RANDOM_LEO_ALTITUDE_RANGE_KM : rango de altura por defecto de la órbita "random_LEO"
+#   CW_MAX_ECC, CW_MAX_RATIO    : límites de validez de Clohessy-Wiltshire (avisos)
+#   TLE_MAX_DAYS                : antigüedad máxima de un TLE respecto a init_epoch (aviso)
+#   PROPAGATOR_RELTOL, PROPAGATOR_ABSTOL : tolerancias del integrador orbital (Vern9)
+#
+# Criterio: aquí van los valores que cambian el modelo o los resultados y que se
+# podrían querer ajustar. Las tolerancias que solo protegen un cálculo (evitar
+# dividir por ≈ 0, aceptar el redondeo de un dato) se quedan junto a su función.
 #
 # Fuente principal de la forma de los objetivos: ESA's Annual Space Environment
 # Report, GEN-DB-LOG-00288-OPS-SD, Issue 10.1 (8 sep 2026), sección 2.4 (MASTER,
@@ -36,6 +46,10 @@ export FRAGMENT_LC_BREAKS_M, FRAGMENT_LC_BETAS
 export PAYLOAD_AREA_BINS_M2, ROCKET_BODY_AREA_BINS_M2, MISSION_RELATED_LC_RANGE_M
 export PRISM_RATIO_RANGE, PLATE_ASPECT_RANGE, PLATE_THICKNESS_RATIO_RANGE
 export CYLINDER_HR_RANGE, CONE_HR_RANGE, TRUNK_HR_RANGE, TRUNK_RADIUS_RATIO_RANGE
+export OPTICS_BODY, OPTICS_TOP, OPTICS_PANEL
+export SPHERE_MESH_DIVISIONS, CYLINDER_MESH_DIVISIONS, CONE_MESH_DIVISIONS, FRAGMENT_NUM_POINTS_RANGE
+export RANDOM_LEO_ALTITUDE_RANGE_KM, CW_MAX_ECC, CW_MAX_RATIO, TLE_MAX_DAYS
+export PROPAGATOR_RELTOL, PROPAGATOR_ABSTOL
 
 # -----------------------------------------------------------------------------
 # Actitud
@@ -123,5 +137,44 @@ const CONE_HR_RANGE = (1.0, 4.0)
 # Tronco de cono: altura / radio mayor, y radio mayor / radio menor (adaptadores de carga)
 const TRUNK_HR_RANGE = (0.5, 2.0)
 const TRUNK_RADIUS_RATIO_RANGE = (1.2, 3.0)
+
+# -----------------------------------------------------------------------------
+# Propiedades ópticas y mallas de los objetivos
+# -----------------------------------------------------------------------------
+
+# (μ_abs, σ_abs, μ_spec_aux, σ_spec_aux) de cada material (valores heredados del CE2 de Ortiz)
+const OPTICS_BODY  = (0.62, 0.12, 0.7, 0.1)        # cuerpo (MLI, aluminio...)
+const OPTICS_TOP   = (0.55, 0.2, 0.7, 0.1)         # tapas ±z del prisma
+const OPTICS_PANEL = (0.75, 0.1, 0.8, 0.05)        # paneles y placas
+
+# Resolución de las mallas: más divisiones aproximan mejor el área y la normal de las
+# superficies curvas (la esfera de 20 × 20 tiene un área un 1,2 % menor que 4πr²)
+const SPHERE_MESH_DIVISIONS = (20, 20)             # (longitud nθ, latitud nφ con los polos)
+const CYLINDER_MESH_DIVISIONS = 20                 # divisiones del contorno del cilindro
+const CONE_MESH_DIVISIONS = 50                     # divisiones del contorno de conos y troncos
+const FRAGMENT_NUM_POINTS_RANGE = (10, 30)         # puntos de la envolvente convexa de un fragmento
+
+# -----------------------------------------------------------------------------
+# Escenarios
+# -----------------------------------------------------------------------------
+
+# Rango de altura (km) por defecto de "random_LEO" si la spec no lo da (región LEO)
+const RANDOM_LEO_ALTITUDE_RANGE_KM = (400.0, 2000.0)
+
+# Clohessy-Wiltshire: excentricidad máxima del chief y cociente distancia relativa / SMA
+# por encima de los cuales la aproximación pierde precisión (se avisa)
+const CW_MAX_ECC = 0.01
+const CW_MAX_RATIO = 1e-3
+
+# Distancia máxima (días) entre la época de un TLE e init_epoch antes de avisar
+const TLE_MAX_DAYS = 3.0
+
+# -----------------------------------------------------------------------------
+# Propagación orbital
+# -----------------------------------------------------------------------------
+
+# Tolerancias relativa y absoluta del integrador adaptativo Vern9 (Propagator.jl)
+const PROPAGATOR_RELTOL = 1e-11
+const PROPAGATOR_ABSTOL = 1e-11
 
 end # module Parameters

@@ -11,13 +11,14 @@
 #   JD_J2000                     : fecha juliana de la época J2000
 #   WGS84_A, WGS84_F, WGS84_E2   : elipsoide WGS84 (posición de las estaciones)
 #   R_SUN, D_SUN                 : radio del Sol y distancia media Tierra-Sol (eclipses)
+#   TROPICAL_YEAR_DAYS           : duración del año trópico (órbitas heliosíncronas)
 #   DATA_DIR                     : carpeta data/ (kernels SPICE y catálogo Hipparcos)
 # =============================================================================
 
 module Constants
 
 export MU_EARTH, R_EARTH, J2_EARTH, OMEGA_EARTH, JD_J2000, DATA_DIR
-export WGS84_A, WGS84_F, WGS84_E2, R_SUN, D_SUN
+export WGS84_A, WGS84_F, WGS84_E2, R_SUN, D_SUN, TROPICAL_YEAR_DAYS
 
 # Campo gravitatorio terrestre (EGM2008); J2_EARTH = -C20 de la tabla de Propagator.load_coefs_n4
 const MU_EARTH = 398600.4415       # km³/s²
@@ -38,5 +39,8 @@ const WGS84_E2 = WGS84_F*(2 - WGS84_F)
 # Sol, para los conos de sombra (Visibility)
 const R_SUN = 696340.0             # km
 const D_SUN = 149597870.7          # km
+
+# Año trópico (días); el nodo de una SSO debe seguir al Sol medio
+const TROPICAL_YEAR_DAYS = 365.2421897
 
 end

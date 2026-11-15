@@ -124,10 +124,7 @@ end
 # Propiedades ópticas
 # -----------------------------------------------------------------------------
 
-# (μ_abs, σ_abs, μ_spec_aux, σ_spec_aux) de cada material (valores heredados del CE2 de Ortiz)
-const OPTICS_BODY  = (0.62, 0.12, 0.7, 0.1)        # cuerpo (MLI, aluminio...)
-const OPTICS_TOP   = (0.55, 0.2, 0.7, 0.1)         # tapas ±z del prisma
-const OPTICS_PANEL = (0.75, 0.1, 0.8, 0.05)        # paneles y placas
+# Distribuciones de cada material: OPTICS_BODY, OPTICS_TOP y OPTICS_PANEL (Parameters.jl)
 
 """
     rand_trunc_normal(rng, μ, σ; lower=0.0, upper=1.0) -> Float64

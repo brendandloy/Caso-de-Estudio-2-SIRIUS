@@ -43,8 +43,7 @@ using SatelliteToolboxTle: TLE, read_tles_from_file
 using SatelliteToolboxSgp4: sgp4_init, sgp4!
 using SatelliteToolboxTransformations: r_eci_to_eci, TEME, J2000
 
-# Distancia máxima (días) entre la época del TLE y init_epoch antes de avisar
-const TLE_MAX_DAYS = 3.0
+# Distancia máxima (días) entre la época del TLE e init_epoch: TLE_MAX_DAYS (Parameters.jl)
 
 """
     load_tles(path) -> Vector{TLE}

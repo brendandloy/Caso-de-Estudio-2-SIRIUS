@@ -23,7 +23,7 @@ lc_cylinder(d) = (4 * d["radius_m"] + d["height_m"]) / 3
 surface_cylinder(d) = 2π * d["radius_m"] * (d["radius_m"] + d["height_m"])
 
 # Malla con 20 divisiones en el contorno (medidas en km)
-mesh_cylinder(d, rng::AbstractRNG) = cylinder_mesh(d["radius_m"], d["height_m"]; Nt = 20, Nz = 1)
+mesh_cylinder(d, rng::AbstractRNG) = cylinder_mesh(d["radius_m"], d["height_m"]; Nt = CYLINDER_MESH_DIVISIONS, Nz = 1)
 
 register_shape!("cylinder"; dims = ("radius_m", "height_m"), unit = unit_cylinder, lc = lc_cylinder,
                 surface = surface_cylinder, mesh = mesh_cylinder, size_class = :rocket_body)

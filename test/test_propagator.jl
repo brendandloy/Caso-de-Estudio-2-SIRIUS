@@ -9,7 +9,7 @@
 # Uso (desde la raíz del repositorio):
 #   julia --project=. test/test_propagator.jl
 #
-# Carga Types, Constants, Transformations y Propagator (DifferentialEquations
+# Carga Types, Constants, Transformations, Parameters y Propagator (DifferentialEquations
 # tarda en compilar la primera vez). La órbita de prueba es una LEO circular.
 #
 # Funciones: propagate_leo
@@ -25,6 +25,7 @@ const ROOT = normpath(joinpath(@__DIR__, ".."))
 isdefined(Main, :Types)           || include(joinpath(ROOT, "src", "Types.jl"))
 isdefined(Main, :Constants)       || include(joinpath(ROOT, "src", "Constants.jl"))
 isdefined(Main, :Transformations) || include(joinpath(ROOT, "src", "Transformations.jl"))
+isdefined(Main, :Parameters)      || include(joinpath(ROOT, "src", "Parameters.jl"))
 isdefined(Main, :Propagator)      || include(joinpath(ROOT, "src", "Propagator.jl"))
 
 using .Types, .Constants, .Transformations, .Propagator

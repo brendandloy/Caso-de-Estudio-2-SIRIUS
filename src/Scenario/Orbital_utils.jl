@@ -5,8 +5,7 @@
 # Se incluye desde Scenario.jl, por lo que comparte su espacio de nombres
 # (también ve getreq, getopt, ELEMENT_KEYS, etc.).
 #
-# Constantes:
-#   TROPICAL_YEAR_DAYS (J2_EARTH, de Constants)
+# Constantes que usa (de Constants): TROPICAL_YEAR_DAYS, J2_EARTH
 #
 # Funciones:
 #   sma_ecc_from_altitudes  : (altitud) o (perigeo, apogeo) -> (SMA, ECC).
@@ -28,9 +27,6 @@
 # Los ejemplos de los docstrings usan este contexto:
 #   ctx = (R = 6378.1363, mu = 398600.4415, epoch = DateTime("2000-01-01T11:59:28"))
 # =============================================================================
-
-# Duración del año trópico en días; el nodo de una SSO debe seguir al Sol medio
-const TROPICAL_YEAR_DAYS = 365.2421897
 
 """
     sma_ecc_from_altitudes(p, ctx; who) -> Tuple{Float64,Float64}

@@ -12,19 +12,12 @@
 # simulador propaga cada satélite con su dinámica completa. Hipótesis de CW: chief
 # casi circular, distancias relativas << SMA, gravedad kepleriana.
 #
-# Constantes:
-#   CW_MAX_ECC, CW_MAX_RATIO
+# Parámetros maestros que usa (Parameters.jl): CW_MAX_ECC, CW_MAX_RATIO
 #
 # Funciones:
 #   lvlh_to_elements : estado relativo LVLH (posición y velocidad) -> elementos del miembro.
 #   cw_members       : lista de estados relativos -> lista de miembros (con avisos de validez).
 # =============================================================================
-
-# Excentricidad del chief por encima de la cual CW deja de ser una buena aproximación
-const CW_MAX_ECC = 0.01
-
-# Cociente distancia relativa / SMA por encima del cual la linealización pierde precisión
-const CW_MAX_RATIO = 1e-3
 
 """
     lvlh_to_elements(chief, rho, rho_dot, ctx) -> Dict{String,Any}

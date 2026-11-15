@@ -3,6 +3,7 @@ module Propagator
 export propagate
 
 using ..Constants
+using ..Parameters: PROPAGATOR_RELTOL, PROPAGATOR_ABSTOL   # tolerancias del integrador (parámetros maestros)
 using ..Transformations
 using ..Types
 
@@ -218,8 +219,8 @@ function propagate(obj_dict::Dict{Symbol, State}, start_time, sim_time, Δt_out)
             # Definición del problema
             prob = ODEProblem(dynamics, u0, (0.0, t_samples[end]))   # termina en el último instante de la malla
             sol = solve(prob, Vern9();# Integradores: Tsit5 Vern9 Vern7
-                reltol = 1e-11,                      # Relative error tolerance
-                abstol = 1e-11,                      # Absolute error tolerance
+                reltol = PROPAGATOR_RELTOL,          # Relative error tolerance
+                abstol = PROPAGATOR_ABSTOL,          # Absolute error tolerance
                 dt = 60.0,                           # Initial step size guess
                 dtmin = 1e-3,                        # Minimum allowable step size
                 dtmax = 2700.0,                      # Maximum allowable step size

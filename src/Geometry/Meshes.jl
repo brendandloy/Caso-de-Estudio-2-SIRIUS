@@ -214,7 +214,7 @@ end
     hollow_cone(base_radius, height; top_radius=0.0) -> (V, F)
 
 Malla de la superficie lateral de un cono (`top_radius = 0`) o de un tronco de cono
-(`0 < top_radius < base_radius`), con 50 divisiones en el contorno. La base mayor
+(`0 < top_radius < base_radius`), con `CONE_MESH_DIVISIONS` (50) divisiones en el contorno. La base mayor
 está en `z = 0` y la menor (o el vértice) en `z = height`. No incluye bases: son
 superficies abiertas (decisión confirmada con el tutor).
 
@@ -246,7 +246,7 @@ function hollow_cone(base_radius::Real, height::Real; top_radius::Real = 0.0)
     (0 <= top_radius < base_radius) ||
         error("hollow_cone: top_radius must be in [0, base_radius) (got $top_radius).")
 
-    n = 50                                                  # divisiones del contorno
+    n = CONE_MESH_DIVISIONS                                 # divisiones del contorno (parámetro maestro)
     θ = range(0, 2π, length = n + 1)[1:end-1]
 
     if top_radius > 0
@@ -493,7 +493,7 @@ V, F = random_fragment(1e-4; rng = MersenneTwister(1))     # fragmento de L_c = 
 function random_fragment(char_length::Real; rng::AbstractRNG = Random.default_rng())
     char_length > 0 || error("random_fragment: char_length must be > 0.")
 
-    num_points = rand(rng, 10:30)
+    num_points = rand(rng, FRAGMENT_NUM_POINTS_RANGE[1]:FRAGMENT_NUM_POINTS_RANGE[2])
     pts = generate_points_in_sphere(rng, num_points)       # en la esfera unidad
     pts .-= mean(pts, dims = 1)                            # centrado en su centroide
 

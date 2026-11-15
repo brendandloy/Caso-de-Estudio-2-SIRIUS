@@ -44,7 +44,8 @@ module Scenario
 export generate_config, generate_config_file, write_config
 export register_orbit!, register_pattern!, register_layout!
 
-using ..Constants          # MU_EARTH, R_EARTH (km), J2_EARTH, OMEGA_EARTH (rad/s)
+using ..Constants          # MU_EARTH, R_EARTH (km), J2_EARTH, OMEGA_EARTH (rad/s), TROPICAL_YEAR_DAYS
+using ..Parameters: RANDOM_LEO_ALTITUDE_RANGE_KM, CW_MAX_ECC, CW_MAX_RATIO, TLE_MAX_DAYS   # parámetros maestros
 using ..JSONUtils: check_keys, get_or_draw_seed   # validación de claves y semillas, común a todos los módulos
 using ..Transformations: theta0_from_utc   # misma rotación terrestre (ERA) que el simulador
 using ..Attitude: parse_attitude, attitude_block, bind_attitude   # bloque "attitude" de objetivos y observadores

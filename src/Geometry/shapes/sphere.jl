@@ -22,7 +22,7 @@ lc_sphere(d) = 2 * d["radius_m"]
 surface_sphere(d) = 4π * d["radius_m"]^2
 
 # Malla UV de 20 × 20 (medidas en km)
-mesh_sphere(d, rng::AbstractRNG) = sphere_mesh(d["radius_m"], 20, 20)
+mesh_sphere(d, rng::AbstractRNG) = sphere_mesh(d["radius_m"], SPHERE_MESH_DIVISIONS...)
 
 register_shape!("sphere"; dims = ("radius_m",), unit = unit_sphere, lc = lc_sphere,
                 surface = surface_sphere, mesh = mesh_sphere, size_class = :mission_related)

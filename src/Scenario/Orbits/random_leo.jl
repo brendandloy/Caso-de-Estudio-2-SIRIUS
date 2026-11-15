@@ -12,7 +12,7 @@
 #   - número           -> valor fijo
 #
 # Rangos por defecto y distribución:
-#   altitude_km  [400, 2000] km   uniforme (región LEO)
+#   altitude_km  RANDOM_LEO_ALTITUDE_RANGE_KM (Parameters.jl, [400, 2000] km), uniforme
 #   INC          [0, 180] deg     isótropa: cos(INC) uniforme, como si la normal al
 #                                 plano orbital apuntara a una dirección al azar
 #   RAAN         [0, 360] deg     uniforme
@@ -96,7 +96,7 @@ function random_leo_elements(p::AbstractDict, ctx)
                who = "random_LEO", computed = ("SMA", "ECC", "AOP"))
 
     # Orden fijo de muestreo: con la misma semilla salen siempre los mismos valores
-    alt  = sample_param(p, "altitude_km", (400.0, 2000.0), ctx.rng)
+    alt  = sample_param(p, "altitude_km", RANDOM_LEO_ALTITUDE_RANGE_KM, ctx.rng)
     inc  = sample_param(p, "INC",  (0.0, 180.0), ctx.rng; isotropic = true)
     raan = sample_param(p, "RAAN", (0.0, 360.0), ctx.rng)
     ta   = sample_param(p, "TA",   (0.0, 360.0), ctx.rng)

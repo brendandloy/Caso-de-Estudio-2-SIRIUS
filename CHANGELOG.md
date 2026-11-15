@@ -4,6 +4,13 @@ Cambios relevantes de SIRIUS en el Caso de Estudio 2. Formato basado en [Keep a 
 
 ## [Sin publicar]
 
+### 2026-11-15
+#### Cambiado
+- Pasan a parámetros maestros (`Parameters.jl`) valores que cambian el modelo o los resultados y estaban repartidos por el código: `OPTICS_BODY`, `OPTICS_TOP` y `OPTICS_PANEL` (antes en `Geometry.jl`), `CW_MAX_ECC` y `CW_MAX_RATIO` (antes en `Relative_utils.jl`), `TLE_MAX_DAYS` (antes en `tle.jl`) y, antes escritos dentro de las funciones, `RANDOM_LEO_ALTITUDE_RANGE_KM`, `PROPAGATOR_RELTOL`, `PROPAGATOR_ABSTOL`, `SPHERE_MESH_DIVISIONS`, `CYLINDER_MESH_DIVISIONS`, `CONE_MESH_DIVISIONS` y `FRAGMENT_NUM_POINTS_RANGE`. Mismos valores: los resultados no cambian.
+- `TROPICAL_YEAR_DAYS` pasa de `Orbital_utils.jl` a `Constants.jl` (es una constante física).
+- `test_propagator.jl` carga también `Parameters.jl` (lo usa Propagator).
+- `CLAUDE.md`: criterio para decidir qué va en `Parameters.jl` y qué se queda junto a su función.
+
 ### 2026-11-14
 #### Añadido
 - `src/Integrators.jl` (módulo `Integrators`): `runge_kutta_4(f, x, t, h)`, un paso de Runge-Kutta 4 de paso fijo para cualquier estado (número, `SVector`…). Ver `?runge_kutta_4`.

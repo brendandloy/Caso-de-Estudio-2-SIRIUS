@@ -19,6 +19,8 @@ Simulador de imágenes de objetos residentes en el espacio (RSOs) captados por c
 - `src/`: toda la lógica, sin duplicar. `scripts/`: solo cargan, llaman a funciones de `src/` y guardan resultados; no definen funciones salvo helpers mínimos.
 - Antes de escribir una función, busca si ya existe (p. ej. lectores del JSON en `JSON_utils.jl`, conversiones en `Transformations.jl`, constantes en `Constants.jl`, parámetros del programa en `Parameters.jl`).
 - Constantes físicas solo en `Constants.jl`; valores que fijamos los desarrolladores, en `Parameters.jl`; lo que elige el usuario, en el JSON.
+  - `Parameters.jl`: valores que cambian el modelo o los resultados y que se podrían querer ajustar (rangos de sorteo, límites de validez de un modelo, resolución de mallas, tolerancias o pasos de un integrador).
+  - Junto a su función: tolerancias que solo protegen un cálculo (evitar dividir por ≈ 0, aceptar el redondeo de un dato escrito a mano), listas de claves del JSON, registros de plugins y marcadores.
 - Rutas siempre relativas a la raíz (`DATA_DIR`, `@__DIR__`), nunca absolutas.
 - Las claves del JSON son la interfaz con el usuario: no se renombran sin avisar, porque rompen las specs.
 - Ampliaciones con el patrón de registro existente (`register_attitude!`, `register_shape!`, `register_orbit!`...): un archivo nuevo por modo, forma u órbita.
