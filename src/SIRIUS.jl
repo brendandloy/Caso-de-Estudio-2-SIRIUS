@@ -14,10 +14,10 @@ include("Attitude/Attitude.jl")     # actitud de los objetivos; Environment la u
 include("Geometry/Geometry.jl")     # forma de los objetivos; la usan el generador y Environment
 include("Scenario/Scenario.jl")     # generador spec -> JSON completo (lo usa scripts/main.jl)
 include("Visibility.jl")          # eclipse, línea de visión y deslumbramiento; la usa Photometry
+include("Camera_sim.jl")          # cámara e intrínsecos; antes que Environment, que lee camera_config
 include("Environment.jl")
 include("Propagator.jl")
 include("Visualization.jl")
-include("Camera_sim.jl")
 include("Photometry.jl")
 include("Simulation.jl")          # flujo completo de la simulación (run_spec, run_simulation); el último
 

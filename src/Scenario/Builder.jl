@@ -54,9 +54,13 @@ const DEFAULT_TEMPLATE = Dict{String,Any}(
     "star_csv_flag"                    => false,
     "camera_config" => Dict{String,Any}(
         "Vmag_lim"          => 10.0,
-        "fov_deg"           => 27,
         "resolution_x"      => 1024,
         "resolution_y"      => 1024,
+        "fx_px"             => 2132.6334822862937,   # = 512/tan(13.5°): FOV de 27°, como el antiguo fov_deg
+        "fy_px"             => 2132.6334822862937,
+        "u0_px"             => nothing,              # null = centro del sensor, (N + 1)/2
+        "v0_px"             => nothing,
+        "skew_px"           => 0.0,
         "mag0"              => 8.0,
         "flux0"             => 20000.0,
         "fwhm_deg"          => 0.0659,
@@ -128,7 +132,7 @@ end
 Fusiona `over` dentro de `base` de forma recursiva: los diccionarios se
 mezclan clave a clave y cualquier otro valor de `over` sustituye al de `base`.
 
-Por qué existe: permite cambiar un solo valor anidado (p. ej. `fov_deg`) sin
+Por qué existe: permite cambiar un solo valor anidado (p. ej. `fwhm_deg`) sin
 repetir todo el bloque `camera_config` en la spec.
 
 # Argumentos
@@ -143,9 +147,9 @@ repetir todo el bloque `camera_config` en la spec.
 
 # Ejemplo
 ```julia
-base = Dict("camera_config" => Dict("fov_deg" => 27, "mag0" => 8.0))
-over = Dict("camera_config" => Dict("fov_deg" => 20))
-deep_merge!(base, over)     # camera_config = Dict("fov_deg" => 20, "mag0" => 8.0)
+base = Dict("camera_config" => Dict("fwhm_deg" => 0.0659, "mag0" => 8.0))
+over = Dict("camera_config" => Dict("fwhm_deg" => 0.1))
+deep_merge!(base, over)     # camera_config = Dict("fwhm_deg" => 0.1, "mag0" => 8.0)
 ```
 """
 function deep_merge!(base::AbstractDict, over::AbstractDict)
@@ -165,7 +169,8 @@ const KEY_ORDER = [
     "navigation_error_flag", "graphic_display_flag", "image_generation_flag",
     "ignore_fov_for_measurements_flag", "star_csv_flag",
     "camera_config", "photometry_config", "objectives", "observers", "stations_llh",
-    "Vmag_lim", "fov_deg", "resolution_x", "resolution_y", "mag0", "flux0", "fwhm_deg",
+    "Vmag_lim", "resolution_x", "resolution_y", "fx_px", "fy_px", "u0_px", "v0_px", "skew_px",
+    "mag0", "flux0", "fwhm_deg",
     "background_level", "sigma_read_noise", "upper_percentile", "lower_percentage", "los_sigma_arcsec",
     "phi_sun", "glare_angle_deg", "Vref_phong", "Fref_phong",
     "SMA", "ECC", "INC", "RAAN", "AOP", "TA",

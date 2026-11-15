@@ -8,6 +8,7 @@ using ..Constants
 using ..Attitude: AttitudeSpec, parse_member_attitude    # lectura del bloque "attitude" de cada miembro
 using ..Attitude: camera_mount_block, parse_camera_mount # montaje de la cámara de cada observador (C_cb)
 using ..Geometry: ShapeSpec, parse_member_shape          # lectura del bloque "shape" de cada objetivo
+using ..CameraSim: camera_intrinsics, sensor_fov_deg     # intrínsecos de la cámara (camera_config)
 
 using StaticArrays
 using SPICE
@@ -128,8 +129,9 @@ function load_config(path::AbstractString)
     return env
 end
 
-# camera_config del JSON más los flags que usa la cámara (están en la raíz del JSON)
+# camera_config del JSON, sus intrínsecos ya validados y los flags que usa la cámara (en la raíz del JSON)
 camera_settings(cfg) = merge(NamedTuple(cfg.camera_config), (
+    intrinsics                       = camera_intrinsics(cfg.camera_config),
     star_csv_flag                    = Bool(cfg.star_csv_flag),
     navigation_error_flag            = Bool(cfg.navigation_error_flag),
     ignore_fov_for_measurements_flag = Bool(cfg.ignore_fov_for_measurements_flag),
@@ -216,6 +218,7 @@ print_config_summary(env) = println("""
     - Epoch: $(env.init_epoch)
     - Navigation error: $(env.navigation_error_flag)
     - Graphics: $(env.graphic_display_flag)
+    - Camera: $(env.camera_config.intrinsics.resolution_x) × $(env.camera_config.intrinsics.resolution_y) px, FOV $(join(round.(sensor_fov_deg(env.camera_config.intrinsics), digits = 2), "° × "))°
     - Objects: $(keys(env.objects))
     - Stations: $(keys(env.stations_llh))
     """)

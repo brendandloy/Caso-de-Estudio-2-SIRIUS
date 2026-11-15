@@ -8,19 +8,29 @@
 #
 # Orientación de la cámara: llega como C_ci (ECI -> cámara) por instante, C_ci = C_cb · C_bi
 # (ver Attitude/Mount.jl). Ejes cámara dextrógiros: x_c derecha de la imagen, y_c abajo,
-# z_c = boresight. Proyección pinhole (= gnomónica TAN) con f = ½·mín(nx, ny)/tan(FOV/2).
-# El FOV es el cono de semiángulo FOV/2 alrededor del boresight (como en el CE3).
+# z_c = boresight.
 #
-# Funciones principales: load_hipparcos, prefilter_box, filter_cone, radec_to_pixels!,
-# prepare_render_dict, render_psf_gaussian!, ruido (add_*), build_debris_catalog, err_meas!,
-# star_frame, camera_sim! (punto de entrada) y sus pasos: setup_star_field, frame_star_field!,
-# start_frame!, paint_star_field!, sky_background, debris_in_view, log_debris!, finish_frame!,
-# frame_name y star_catalog_rows.
+# Intrínsecos (CameraIntrinsics, bloque camera_config): resolución, focales f_x, f_y (px),
+# punto principal (u0, v0) y skew α. Proyección pinhole con la matriz K (Memoria Nagoya,
+# ec. 2.5): u = f_x x' + α y' + u0, v = f_y y' + v0, con x' = x_c/z_c, y' = y_c/z_c. Píxeles
+# desde 1 (el píxel k ocupa [k - ½, k + ½]). Una fuente se ve si su píxel cae dentro del
+# sensor (FOV rectangular); antes se descartan las que están fuera de un cono que contiene
+# todo el sensor (prefiltro rápido para el catálogo de estrellas).
+#
+# Funciones principales: CameraIntrinsics, camera_intrinsics, sensor_fov_deg,
+# prefilter_cone_deg, load_hipparcos, prefilter_box, filter_cone, radec_to_pixels!,
+# prepare_render_dict, in_sensor, sources_in_view, gaussian_kernel, render_psf_gaussian!,
+# ruido (add_*), build_debris_catalog, err_meas!, star_frame, camera_sim! (punto de entrada)
+# y sus pasos: setup_star_field, frame_star_field!, start_frame!, paint_star_field!,
+# sky_background, debris_in_view, log_debris!, finish_frame!, frame_name y star_catalog_rows.
+#
+# Dependencias: Types, Constants (DATA_DIR), Parameters (FOV_PREFILTER_MARGIN) y JSONUtils
+# (lectura de camera_config), que deben estar cargados antes.
 # =============================================================================
 
 module CameraSim
 
-export camera_sim!
+export camera_sim!, CameraIntrinsics, camera_intrinsics, sensor_fov_deg
 
 using FITSIO
 using DataFrames
@@ -34,6 +44,128 @@ using Dates
 
 using ..Types
 using ..Constants: DATA_DIR     # carpeta data/ (catálogo Hipparcos)
+using ..Parameters: FOV_PREFILTER_MARGIN   # margen del cono de prefiltro (parámetro maestro)
+using ..JSONUtils: todict, getnum           # lectura y validación de camera_config
+
+# -----------------------------------------------------------------------------
+# Intrínsecos de la cámara
+# -----------------------------------------------------------------------------
+
+"""
+    CameraIntrinsics(resolution_x, resolution_y, fx_px, fy_px, u0_px, v0_px, skew_px)
+
+Parámetros intrínsecos de la cámara pinhole (Memoria Nagoya, ec. 2.5): resolución (px),
+focales efectivas en píxeles por radián, punto principal (px, desde 1) y skew α (px).
+Se construye y valida con `camera_intrinsics`.
+"""
+struct CameraIntrinsics
+    resolution_x::Int
+    resolution_y::Int
+    fx_px::Float64
+    fy_px::Float64
+    u0_px::Float64
+    v0_px::Float64
+    skew_px::Float64
+end
+
+"""
+    camera_intrinsics(camera_config) -> CameraIntrinsics
+
+Lee y valida los intrínsecos del bloque `camera_config`. Obligatorios: `resolution_x`,
+`resolution_y`, `fx_px`, `fy_px`. Opcionales: `u0_px`, `v0_px` (por defecto, o si valen
+`null`, el centro del sensor, (N + 1)/2) y `skew_px` (por defecto 0).
+
+Por qué existe: los intrínsecos se validan una vez, al leer el JSON, y la cámara trabaja
+con un tipo de campos fijos.
+
+# Argumentos
+- `camera_config`: bloque del JSON (JSON3 o `Dict`).
+
+# Devuelve
+- `CameraIntrinsics`.
+
+# Excepciones
+- `ErrorException`: si falta una clave obligatoria, la resolución no es un entero positivo
+  o una focal no es positiva.
+
+# Ejemplo
+```julia
+cam = camera_intrinsics(Dict("resolution_x" => 1024, "resolution_y" => 1024,
+                             "fx_px" => 2132.63, "fy_px" => 2132.63))   # u0 = v0 = 512.5
+```
+"""
+function camera_intrinsics(camera_config)
+    b = todict(camera_config)
+    who = "camera_config"
+    nx, ny = (getnum(b, k, who) for k in ("resolution_x", "resolution_y"))
+    (isinteger(nx) && isinteger(ny) && nx > 0 && ny > 0) ||
+        error("$who: 'resolution_x' and 'resolution_y' must be positive integers.")
+    fx, fy = getnum(b, "fx_px", who), getnum(b, "fy_px", who)
+    (fx > 0 && fy > 0) || error("$who: 'fx_px' and 'fy_px' must be > 0 (got $fx, $fy).")
+
+    # Punto principal: por defecto, el centro del sensor con píxeles desde 1
+    u0 = get(b, "u0_px", nothing) === nothing ? (nx + 1) / 2 : getnum(b, "u0_px", who)
+    v0 = get(b, "v0_px", nothing) === nothing ? (ny + 1) / 2 : getnum(b, "v0_px", who)
+    skew = haskey(b, "skew_px") ? getnum(b, "skew_px", who) : 0.0
+    return CameraIntrinsics(Int(nx), Int(ny), fx, fy, u0, v0, skew)
+end
+
+# Coordenadas normalizadas (x', y') = (x_c/z_c, y_c/z_c) de un píxel (u, v): inversa de K
+function pixel_to_normalized(cam::CameraIntrinsics, u::Real, v::Real)
+    y = (v - cam.v0_px) / cam.fy_px
+    x = (u - cam.u0_px - cam.skew_px * y) / cam.fx_px
+    return x, y
+end
+
+"""
+    sensor_fov_deg(cam) -> (fov_x, fov_y)
+
+Campo de visión (°) horizontal y vertical del sensor: ángulo entre los bordes izquierdo y
+derecho (superior e inferior) vistos desde la cámara, `atan((u0 - ½)/f_x) + atan((N + ½ - u0)/f_x)`.
+Con el punto principal centrado es `2 atan(N/(2 f_x))`. No es una entrada: se informa.
+
+# Argumentos
+- `cam::CameraIntrinsics`.
+
+# Devuelve
+- `(fov_x, fov_y)` en grados (sin skew ni distorsión).
+
+# Excepciones
+- Ninguna.
+
+# Ejemplo
+```julia
+sensor_fov_deg(CameraIntrinsics(1024, 1024, 2132.63, 2132.63, 512.5, 512.5, 0.0))   # ≈ (27.0, 27.0)
+```
+"""
+function sensor_fov_deg(cam::CameraIntrinsics)
+    edges(c, n, f) = atand((c - 0.5) / f) + atand((n + 0.5 - c) / f)
+    return edges(cam.u0_px, cam.resolution_x, cam.fx_px), edges(cam.v0_px, cam.resolution_y, cam.fy_px)
+end
+
+"""
+    prefilter_cone_deg(cam) -> Float64
+
+Apertura total (°) del cono de prefiltro alrededor del boresight: el doble del ángulo a la
+esquina del sensor más alejada, multiplicado por `FOV_PREFILTER_MARGIN` y limitado a 179.8°.
+
+Por qué existe: filtrar el catálogo con un cono es rápido; el margen evita perder fuentes
+cuando la distorsión de la lente (tanda siguiente) lleva al sensor puntos de fuera.
+
+# Argumentos
+- `cam::CameraIntrinsics`.
+
+# Devuelve
+- `Float64` en grados.
+
+# Excepciones
+- Ninguna.
+"""
+function prefilter_cone_deg(cam::CameraIntrinsics)
+    corners = ((u, v) for u in (0.5, cam.resolution_x + 0.5), v in (0.5, cam.resolution_y + 0.5))
+    θ_corner = maximum(atand(hypot(pixel_to_normalized(cam, u, v)...)) for (u, v) in corners)
+    return min(2 * FOV_PREFILTER_MARGIN * θ_corner, 179.8)
+end
 
 # Normalice RA to [0,360)
 @inline function wrap360(x)
@@ -122,13 +254,30 @@ function radec_box_square(ra0::Real, dec0::Real, fov_deg::Real)
 end
 
 
-function prefilter_box(stars, boresight_vec, fov_deg::Real)
+"""
+    prefilter_box(stars, boresight_vec, cone_deg) -> DataFrame
+
+Primer filtro, muy rápido: fuentes con declinación a menos de `cone_deg/2` de la del
+boresight (banda en Dec; el filtro en RA está desactivado).
+
+# Argumentos
+- `stars::DataFrame`: fuentes con `ra`, `dec` (°).
+- `boresight_vec`: boresight unitario en ECI.
+- `cone_deg::Real`: apertura total del cono de prefiltro (°).
+
+# Devuelve
+- Las filas de `stars` dentro de la banda.
+
+# Excepciones
+- Ninguna.
+"""
+function prefilter_box(stars, boresight_vec, cone_deg::Real)
 
     # Convert camera pointing to RA/Dec center
     ra0, dec0 = vec_to_radec(boresight_vec)
 
     # Build bounding box in RA/Dec
-    box = radec_box_square(ra0, dec0, fov_deg)
+    box = radec_box_square(ra0, dec0, cone_deg)
 
     # Apply declination bounds
     mask = (stars.dec .>= box.dec_min) .& (stars.dec .<= box.dec_max)
@@ -139,10 +288,26 @@ function prefilter_box(stars, boresight_vec, fov_deg::Real)
     return stars[mask, :]
 end
 
-function filter_cone(stars, boresight_vec, fov_deg::Real)
+"""
+    filter_cone(stars, boresight_vec, cone_deg) -> DataFrame
+
+Fuentes a menos de `cone_deg/2` del boresight (separación angular).
+
+# Argumentos
+- `stars::DataFrame`: fuentes con `ra`, `dec` (°).
+- `boresight_vec`: boresight unitario en ECI.
+- `cone_deg::Real`: apertura total del cono (°).
+
+# Devuelve
+- Las filas de `stars` dentro del cono.
+
+# Excepciones
+- Ninguna.
+"""
+function filter_cone(stars, boresight_vec, cone_deg::Real)
 
     bx, by, bz = boresight_vec
-    cos_fov = cos(deg2rad(fov_deg / 2))
+    cos_fov = cos(deg2rad(cone_deg / 2))
 
     is_in_cone = BitVector(undef, nrow(stars))
 
@@ -168,26 +333,28 @@ end
 const OFF_IMAGE = typemin(Int) ÷ 2
 
 """
-    radec_to_pixels!(x, y, ra, dec, C_ci, fov_deg, nx, ny) -> Nothing
+    radec_to_pixels!(x, y, ra, dec, C_ci, cam) -> Nothing
 
-Proyecta direcciones (RA, Dec) sobre la imagen con el modelo pinhole: se pasa
-cada dirección a ejes cámara con la orientación de la cámara y se divide por z_c.
+Proyecta direcciones (RA, Dec) sobre la imagen con el modelo pinhole y los intrínsecos de
+la cámara: se pasa cada dirección a ejes cámara y se divide por z_c (coordenadas
+normalizadas), y después se aplica la matriz K (Memoria Nagoya, ec. 2.5):
 
-Modelo (ejes cámara dextrógiros: x_c derecha, y_c abajo, z_c = boresight):
-  ρ_c = C_ci · û_i,   x = c_x + f · x_c/z_c,   y = c_y + f · y_c/z_c,
-con f = ½·mín(nx, ny) / tan(FOV/2) (focal en píxeles, como en el CE3 de I. Ferrando)
-y (c_x, c_y) el centro de la imagen. Es la proyección gnomónica (TAN) sobre el plano
-tangente en el boresight, pero con el giro de la imagen que da la actitud.
+  ρ_c = C_ci · û_i,   x' = x_c/z_c,   y' = y_c/z_c,
+  u = f_x x' + α y' + u0,   v = f_y y' + v0.
+
+Ejes cámara dextrógiros (x_c derecha, y_c abajo, z_c = boresight); píxeles desde 1. Es la
+proyección gnomónica (TAN) del CE3 de I. Ferrando (ec. 2.15–2.19), con focales y punto
+principal propios.
 
 # Argumentos
 - `x::Vector{Int}`, `y::Vector{Int}`: salida, columna y fila (1 = arriba a la izquierda).
 - `ra::Vector{Float64}`, `dec::Vector{Float64}`: direcciones en ECI/ICRS (°).
 - `C_ci::AbstractMatrix`: DCM ECI -> cámara en este instante.
-- `fov_deg::Real`: campo de visión (°) sobre el lado menor de la imagen.
-- `nx::Int`, `ny::Int`: resolución (píxeles).
+- `cam::CameraIntrinsics`: intrínsecos.
 
 # Devuelve
-- `nothing` (rellena `x` e `y`). Las fuentes detrás de la cámara reciben `OFF_IMAGE`.
+- `nothing` (rellena `x` e `y`, redondeados al píxel). Las fuentes detrás de la cámara
+  reciben `OFF_IMAGE`.
 
 # Excepciones
 - `AssertionError`: si los vectores no tienen la misma longitud.
@@ -195,29 +362,16 @@ tangente en el boresight, pero con el giro de la imagen que da la actitud.
 # Ejemplo
 ```julia
 x = zeros(Int, 1); y = zeros(Int, 1)
-radec_to_pixels!(x, y, [0.0], [0.0], C_ci, 27, 1024, 1024)    # boresight -> centro (512 o 513)
+radec_to_pixels!(x, y, [0.0], [0.0], C_ci, cam)    # boresight -> (u0, v0) redondeado
 ```
 """
 function radec_to_pixels!(x::Vector{Int}, y::Vector{Int},
                           ra::Vector{Float64}, dec::Vector{Float64},
-                          C_ci::AbstractMatrix,
-                          fov_deg::Real, nx::Int, ny::Int)
+                          C_ci::AbstractMatrix, cam::CameraIntrinsics)
 
     @assert length(x) == length(y) == length(ra) == length(dec)
 
     C = SMatrix{3,3,Float64,9}(C_ci)
-
-    # Cone half-angle in radians
-    θ = deg2rad(Float64(fov_deg) / 2.0)
-
-    # Focal length in pixels:
-    # Ensures the cone circle fits inside the pixel square
-    half_min = 0.5 * min(Float64(nx), Float64(ny))
-    f = half_min / tan(θ)
-
-    # Image center in 1-based pixel coords
-    cx = (Float64(nx) + 1.0) / 2.0
-    cy = (Float64(ny) + 1.0) / 2.0
 
     @inbounds for i in eachindex(ra)
         # Dirección en ejes cámara
@@ -230,9 +384,10 @@ function radec_to_pixels!(x::Vector{Int}, y::Vector{Int},
             continue
         end
 
-        # Pinhole: x hacia la derecha y y hacia abajo, como los índices de la imagen
-        x[i] = round(Int, cx + f * ρ[1] / ρ[3])
-        y[i] = round(Int, cy + f * ρ[2] / ρ[3])
+        # Coordenadas normalizadas y matriz K: x hacia la derecha y y hacia abajo
+        xn, yn = ρ[1] / ρ[3], ρ[2] / ρ[3]
+        x[i] = round(Int, cam.fx_px * xn + cam.skew_px * yn + cam.u0_px)
+        y[i] = round(Int, cam.fy_px * yn + cam.v0_px)
     end
 
     return nothing
@@ -240,7 +395,7 @@ end
 
 
 """
-    prepare_render_dict(stars, C_ci, fov_deg, nx, ny; mag0=8.0, flux0=20_000.0) -> NamedTuple
+    prepare_render_dict(stars, C_ci, cam; mag0=8.0, flux0=20_000.0) -> NamedTuple
 
 Calcula los píxeles y el flujo relativo de una lista de fuentes (estrellas o RSOs)
 para una orientación de la cámara.
@@ -248,7 +403,7 @@ para una orientación de la cámara.
 # Argumentos
 - `stars::DataFrame`: fuentes con columnas `ra`, `dec` (°) y `mag`.
 - `C_ci::AbstractMatrix`: DCM ECI -> cámara en este instante.
-- `fov_deg::Real`, `nx::Int`, `ny::Int`: campo de visión (°) y resolución.
+- `cam::CameraIntrinsics`: intrínsecos.
 - `mag0`, `flux0`: magnitud y flujo de referencia de la escala de flujo.
 
 # Devuelve
@@ -257,8 +412,8 @@ para una orientación de la cámara.
 # Excepciones
 - Ninguna.
 """
-function prepare_render_dict(stars::DataFrame, C_ci::AbstractMatrix, fov_deg::Real,
-                           nx::Int, ny::Int; mag0::Real = 8.0, flux0::Real = 20_000.0)
+function prepare_render_dict(stars::DataFrame, C_ci::AbstractMatrix, cam::CameraIntrinsics;
+                             mag0::Real = 8.0, flux0::Real = 20_000.0)
 
     n = nrow(stars)
 
@@ -271,7 +426,7 @@ function prepare_render_dict(stars::DataFrame, C_ci::AbstractMatrix, fov_deg::Re
     y = Vector{Int}(undef, n)
 
     # Project to pixels with the camera orientation
-    radec_to_pixels!(x, y, ra, dec, C_ci, fov_deg, nx, ny)
+    radec_to_pixels!(x, y, ra, dec, C_ci, cam)
 
     # Magnitude -> flux (relative scaling)
     flux = similar(x, Float64)
@@ -283,31 +438,100 @@ function prepare_render_dict(stars::DataFrame, C_ci::AbstractMatrix, fov_deg::Re
 end
 
 
-function gaussian_kernel(fwhm_pix::Real; k_sigma::Real = 4.0)
+# Píxel (x, y) dentro del sensor (píxeles desde 1); OFF_IMAGE queda fuera
+in_sensor(x::Integer, y::Integer, cam::CameraIntrinsics) = 1 <= x <= cam.resolution_x && 1 <= y <= cam.resolution_y
 
-    σ = Float64(fwhm_pix) / 2.3548200450309493
-    rmax = ceil(Int, k_sigma * σ)
-    inv2σ2 = 1.0 / (2σ^2)
+"""
+    sources_in_view(sources, C_ci, config) -> (DataFrame, NamedTuple)
 
-    sz = 2*rmax + 1
-    K = Matrix{Float64}(undef, sz, sz)
+Fuentes (estrellas o RSOs) que caen en el sensor con una orientación de la cámara, y sus
+píxeles y flujos: cono de prefiltro (`prefilter_cone_deg`), proyección con los intrínsecos
+y selección de las que caen dentro del sensor (FOV rectangular).
 
-    @inbounds for j in 1:sz, i in 1:sz
-        dx = Float64(i - (rmax + 1))
-        dy = Float64(j - (rmax + 1))
-        K[j, i] = exp(-(dx*dx + dy*dy) * inv2σ2)
+Por qué existe: es la misma selección para estrellas y RSOs.
+
+# Argumentos
+- `sources::DataFrame`: fuentes con `ra`, `dec` (°) y `mag`.
+- `C_ci::AbstractMatrix`: DCM ECI -> cámara en este instante.
+- `config`: `camera_config` (usa `intrinsics`, `mag0` y `flux0`).
+
+# Devuelve
+- `(sources_in, render)`: filas de `sources` en el sensor y su `(x, y, flux)`.
+
+# Excepciones
+- Ninguna.
+"""
+function sources_in_view(sources::DataFrame, C_ci::AbstractMatrix, config)
+    cam = config.intrinsics
+    b = boresight_eci(C_ci)
+    cone = prefilter_cone_deg(cam)
+    near = filter_cone(prefilter_box(sources, b, cone), b, cone)
+    render = prepare_render_dict(near, C_ci, cam; mag0 = config.mag0, flux0 = config.flux0)
+    keep = in_sensor.(render.x, render.y, Ref(cam))
+    return near[keep, :], (x = render.x[keep], y = render.y[keep], flux = render.flux[keep])
+end
+
+"""
+    gaussian_kernel(fwhm_x_pix, fwhm_y_pix; k_sigma=4.0) -> (K, rx, ry)
+
+Núcleo gaussiano normalizado (suma 1) de la PSF, con anchura propia en cada eje:
+`exp(-Δx²/2σ_x² - Δy²/2σ_y²)`, con σ = FWHM / (2√(2 ln 2)). Se corta a `k_sigma` σ.
+
+Por qué existe: con f_x ≠ f_y (píxeles no cuadrados) una PSF circular en el cielo es
+elíptica en el sensor; con f_x = f_y es circular.
+
+# Argumentos
+- `fwhm_x_pix`, `fwhm_y_pix`: FWHM en columnas y en filas (px).
+- `k_sigma::Real`: radio del núcleo en σ.
+
+# Devuelve
+- `K::Matrix{Float64}` de (2ry + 1) × (2rx + 1) y los semianchos `rx`, `ry` (px).
+
+# Excepciones
+- Ninguna.
+"""
+function gaussian_kernel(fwhm_x_pix::Real, fwhm_y_pix::Real; k_sigma::Real = 4.0)
+
+    σx = Float64(fwhm_x_pix) / 2.3548200450309493
+    σy = Float64(fwhm_y_pix) / 2.3548200450309493
+    rx, ry = ceil(Int, k_sigma * σx), ceil(Int, k_sigma * σy)
+
+    K = Matrix{Float64}(undef, 2ry + 1, 2rx + 1)
+    @inbounds for j in 1:(2ry + 1), i in 1:(2rx + 1)
+        dx = Float64(i - (rx + 1))
+        dy = Float64(j - (ry + 1))
+        K[j, i] = exp(-dx^2 / (2σx^2) - dy^2 / (2σy^2))
     end
 
     # Normalize once so total kernel sum = 1
     K ./= sum(K)
 
-    return K, rmax
+    return K, rx, ry
 end
 
 
-function render_psf_gaussian!(img::Matrix{Float64}, render::NamedTuple, fov_deg::Real,
-                              fwhm_deg::Real;
-                              k_sigma::Real = 4.0)
+"""
+    render_psf_gaussian!(img, render, cam, fwhm_deg; k_sigma=4.0) -> Nothing
+
+Suma a `img` la PSF gaussiana de cada fuente de `render`. La FWHM angular se pasa a
+píxeles con la escala del centro de la imagen en cada eje: `f_x · fwhm` y `f_y · fwhm`
+(fwhm en rad); con píxeles cuadrados la mancha es circular. El skew no se tiene en cuenta
+en la PSF (α ≈ 0 en sensores reales).
+
+# Argumentos
+- `img::Matrix{Float64}`: imagen (ny × nx); se modifica.
+- `render::NamedTuple`: `(x, y, flux)` de las fuentes (`sources_in_view`).
+- `cam::CameraIntrinsics`: intrínsecos.
+- `fwhm_deg::Real`: FWHM de la PSF (°).
+
+# Devuelve
+- `nothing`.
+
+# Excepciones
+- Ninguna.
+"""
+function render_psf_gaussian!(img::Matrix{Float64}, render::NamedTuple, cam::CameraIntrinsics,
+                              fwhm_deg::Real; k_sigma::Real = 4.0)
 
     x = render.x
     y = render.y
@@ -315,9 +539,8 @@ function render_psf_gaussian!(img::Matrix{Float64}, render::NamedTuple, fov_deg:
 
     ny, nx = size(img)
 
-    fwhm_pix = fwhm_deg / (fov_deg / nx)
-    K, rmax = gaussian_kernel(fwhm_pix; k_sigma=k_sigma)
-    sz = 2*rmax + 1
+    fwhm_rad = deg2rad(Float64(fwhm_deg))
+    K, rx, ry = gaussian_kernel(cam.fx_px * fwhm_rad, cam.fy_px * fwhm_rad; k_sigma = k_sigma)
 
     @inbounds for k in eachindex(x)
 
@@ -325,19 +548,19 @@ function render_psf_gaussian!(img::Matrix{Float64}, render::NamedTuple, fov_deg:
         iy0 = y[k]
 
         # Check if kernel is in image
-        if ix0 + rmax < 1 || ix0 - rmax > nx || iy0 + rmax < 1 || iy0 - rmax > ny
+        if ix0 + rx < 1 || ix0 - rx > nx || iy0 + ry < 1 || iy0 - ry > ny
             continue
         end
 
         F = flux[k]
 
-        for kj in 1:sz
-            j = iy0 + (kj - (rmax + 1))
+        for kj in 1:(2ry + 1)
+            j = iy0 + (kj - (ry + 1))
             if j < 1 || j > ny
                 continue
             end
-            for ki in 1:sz
-                i = ix0 + (ki - (rmax + 1))
+            for ki in 1:(2rx + 1)
+                i = ix0 + (ki - (rx + 1))
                 if i < 1 || i > nx
                     continue
                 end
@@ -345,7 +568,7 @@ function render_psf_gaussian!(img::Matrix{Float64}, render::NamedTuple, fov_deg:
             end
         end
     end
-    
+
     return nothing
 end
 
@@ -535,8 +758,8 @@ boresight_eci(C_ci::AbstractMatrix) = SVector{3,Float64}(C_ci[3, 1], C_ci[3, 2],
 """
     star_frame(stars_all, C_ci, config) -> NamedTuple
 
-Estrellas que ve la cámara con una orientación dada: filtro por el cono del
-FOV alrededor del boresight y proyección a píxeles.
+Estrellas que ve la cámara con una orientación dada: las que caen en el sensor y sus
+píxeles (`sources_in_view`).
 
 Por qué existe: con actitud constante en ECI se llama una sola vez; si la actitud
 cambia, una vez por imagen (las estrellas se mueven en la imagen).
@@ -544,21 +767,16 @@ cambia, una vez por imagen (las estrellas se mueven en la imagen).
 # Argumentos
 - `stars_all::DataFrame`: catálogo Hipparcos ya filtrado por magnitud.
 - `C_ci::AbstractMatrix`: DCM ECI -> cámara en este instante.
-- `config`: `camera_config` (usa `fov_deg`, resoluciones, `mag0` y `flux0`).
+- `config`: `camera_config` (usa `intrinsics`, `mag0` y `flux0`).
 
 # Devuelve
-- `(stars, render)`: estrellas dentro del FOV y su `prepare_render_dict`.
+- `(stars, render)`: estrellas en el sensor y sus `(x, y, flux)`.
 
 # Excepciones
 - Ninguna.
 """
 function star_frame(stars_all::DataFrame, C_ci::AbstractMatrix, config)
-    fov = config.fov_deg
-    b = boresight_eci(C_ci)
-    stars = prefilter_box(stars_all, b, fov)
-    stars = filter_cone(stars, b, fov)
-    render = prepare_render_dict(stars, C_ci, fov, config.resolution_x, config.resolution_y;
-        mag0 = config.mag0, flux0 = config.flux0)
+    stars, render = sources_in_view(stars_all, C_ci, config)
     return (stars = stars, render = render)
 end
 
@@ -620,15 +838,13 @@ function camera_sim!(data::Dict{Symbol,TrajectoryData}, los_measurements::Dict{S
         star_field = frame_star_field!(star_catalog, sky, C, image_name, config)
         config.image_generation_flag && start_frame!(sky, star_field, config)
 
-        debris, debris_fov = debris_in_view(obj_names, obj_trajs, photometry_data, obs_name, obs_traj.r[i], i, C, config)
+        debris, debris_fov, render_debris = debris_in_view(obj_names, obj_trajs, photometry_data, obs_name, obs_traj.r[i], i, C, config)
         debris_meas = config.ignore_fov_for_measurements_flag ? debris : debris_fov
         nrow(debris_meas) > 0 &&
             err_meas!(obs_los, debris_meas, obs_traj.t[i], config.los_sigma_arcsec, config.navigation_error_flag)
         if nrow(debris_fov) > 0
-            render_debris = prepare_render_dict(debris_fov, C, config.fov_deg, config.resolution_x, config.resolution_y;
-                                                mag0 = config.mag0, flux0 = config.flux0)
             log_debris!(debris_log, obs_name, debris_fov, render_debris, image_name)
-            config.image_generation_flag && render_psf_gaussian!(sky.img, render_debris, config.fov_deg, config.fwhm_deg)
+            config.image_generation_flag && render_psf_gaussian!(sky.img, render_debris, config.intrinsics, config.fwhm_deg)
         end
 
         config.image_generation_flag && finish_frame!(sky.img, image_name, outdir, config)
@@ -761,7 +977,7 @@ Por qué existe: es lo mismo con actitud constante (una vez) y variable (en cada
 # Argumentos
 - `img::Matrix{Float64}`: imagen (ny × nx); se modifica.
 - `star_field`: salida de `star_frame`.
-- `config`: `camera_config` (usa `fov_deg`, `fwhm_deg`, `background_level`).
+- `config`: `camera_config` (usa `intrinsics`, `fwhm_deg`, `background_level`).
 
 # Devuelve
 - `nothing`.
@@ -770,7 +986,7 @@ Por qué existe: es lo mismo con actitud constante (una vez) y variable (en cada
 - Ninguna.
 """
 function paint_star_field!(img::Matrix{Float64}, star_field, config)
-    render_psf_gaussian!(img, star_field.render, config.fov_deg, config.fwhm_deg)
+    render_psf_gaussian!(img, star_field.render, config.intrinsics, config.fwhm_deg)
     add_background!(img, config.background_level)
     return nothing
 end
@@ -787,7 +1003,7 @@ cada instante se copia, en lugar de recalcularlo.
 
 # Argumentos
 - `star_field`: salida de `star_frame`, o `nothing` si la actitud cambia.
-- `config`: `camera_config` (resolución, `fov_deg`, `fwhm_deg`, `background_level`).
+- `config`: `camera_config` (resolución, `intrinsics`, `fwhm_deg`, `background_level`).
 
 # Devuelve
 - `Matrix{Float64}` de tamaño `resolution_y × resolution_x`.
@@ -802,10 +1018,11 @@ function sky_background(star_field, config)
 end
 
 """
-    debris_in_view(obj_names, obj_trajs, photometry_data, obs_name, r_obs, i, C_ci, config) -> (DataFrame, DataFrame)
+    debris_in_view(obj_names, obj_trajs, photometry_data, obs_name, r_obs, i, C_ci, config) -> (DataFrame, DataFrame, NamedTuple)
 
 RSOs visibles desde el observador en el instante `i` (iluminados, en LOS y sin
-deslumbramiento, según la fotometría) y, de ellos, los que caen en el FOV de la cámara.
+deslumbramiento, según la fotometría) y, de ellos, los que caen en el sensor de la cámara
+(`sources_in_view`), con sus píxeles.
 
 Por qué existe: separa la selección de RSOs del bucle de `camera_sim!`.
 
@@ -815,10 +1032,11 @@ Por qué existe: separa la selección de RSOs del bucle de `camera_sim!`.
 - `obs_name::Symbol`, `r_obs::SVector{3,Float64}`: observador y su posición (ECI, km).
 - `i::Int`: índice del instante.
 - `C_ci::AbstractMatrix`: DCM ECI -> cámara en este instante.
-- `config`: `camera_config` (usa `fov_deg`).
+- `config`: `camera_config` (usa `intrinsics`, `mag0` y `flux0`).
 
 # Devuelve
-- `(debris, debris_fov)`: tablas con `obj_name`, `ra`, `dec` (°) y `mag`.
+- `(debris, debris_fov, render_debris)`: tablas con `obj_name`, `ra`, `dec` (°) y `mag`,
+  y los `(x, y, flux)` de los que caen en el sensor.
 
 # Excepciones
 - Ninguna.
@@ -826,11 +1044,10 @@ Por qué existe: separa la selección de RSOs del bucle de `camera_sim!`.
 function debris_in_view(obj_names, obj_trajs, photometry_data, obs_name::Symbol, r_obs::SVector{3,Float64},
                         i::Int, C_ci::AbstractMatrix, config)
     debris = build_debris_catalog(obj_names, obj_trajs, photometry_data, obs_name, r_obs, i)
-    nrow(debris) == 0 && return debris, debris
+    nrow(debris) == 0 && return debris, debris, (x = Int[], y = Int[], flux = Float64[])
 
-    b = boresight_eci(C_ci)
-    debris_fov = filter_cone(prefilter_box(debris, b, config.fov_deg), b, config.fov_deg)
-    return debris, debris_fov
+    debris_fov, render_debris = sources_in_view(debris, C_ci, config)
+    return debris, debris_fov, render_debris
 end
 
 """

@@ -4,6 +4,23 @@ Cambios relevantes de SIRIUS en el Caso de Estudio 2. Formato basado en [Keep a 
 
 ## [Sin publicar]
 
+### 2026-11-15 (intrínsecos de la cámara)
+#### Añadido
+- `CameraSim.CameraIntrinsics` y `camera_intrinsics`: intrínsecos de la cámara pinhole (*Memoria Nagoya*, ec. 2.5), leídos y validados de `camera_config` al cargar el JSON. Claves nuevas: `fx_px`, `fy_px` (obligatorias), `u0_px`, `v0_px` (`null` = centro del sensor) y `skew_px` (por defecto 0). Píxeles desde 1.
+- `sensor_fov_deg`: FOV horizontal y vertical del sensor; se imprime en el resumen de la configuración.
+- `sources_in_view`, `in_sensor` y `prefilter_cone_deg`: selección de estrellas y RSOs por el sensor, con un cono de prefiltro que contiene todo el sensor.
+- `Parameters.FOV_PREFILTER_MARGIN = 1.25`: margen del cono de prefiltro.
+
+#### Cambiado
+- `radec_to_pixels!` y `prepare_render_dict` proyectan con los intrínsecos (`u = f_x x' + α y' + u0`, `v = f_y y' + v0`) en lugar de con la focal deducida de `fov_deg`.
+- El FOV pasa a ser rectangular (el del sensor): aparecen las fuentes de las esquinas, que antes quedaban fuera del cono de semiángulo FOV/2. Con los valores por defecto (`f_x = f_y = 512/tan(13,5°)`, punto principal en el centro), las fuentes que ya se veían caen en los mismos píxeles.
+- PSF: la FWHM se pasa a píxeles con `f_x · fwhm` y `f_y · fwhm` (escala del centro de la imagen) en lugar de con la escala media `N_x/FOV`, y el núcleo es elíptico si `f_x ≠ f_y` (`gaussian_kernel(fwhm_x, fwhm_y)`). Con los valores por defecto la mancha es un 1,9 % más estrecha y los PNG cambian ligeramente.
+- `Camera_sim.jl` se carga antes que `Environment.jl` (Environment lee los intrínsecos); `test_camera.jl` carga `Parameters.jl` y `JSON_utils.jl`.
+- `debris_in_view` devuelve también los píxeles de los RSOs del sensor, que antes se recalculaban en `camera_sim!`.
+
+#### Eliminado
+- Clave `fov_deg` de `camera_config` (plantilla, valores por defecto del generador y orden de claves): el FOV se deduce de los intrínsecos. Un JSON con `fov_deg` y sin `fx_px` da error.
+
 ### 2026-11-15
 #### Cambiado
 - Pasan a parámetros maestros (`Parameters.jl`) valores que cambian el modelo o los resultados y estaban repartidos por el código: `OPTICS_BODY`, `OPTICS_TOP` y `OPTICS_PANEL` (antes en `Geometry.jl`), `CW_MAX_ECC` y `CW_MAX_RATIO` (antes en `Relative_utils.jl`), `TLE_MAX_DAYS` (antes en `tle.jl`) y, antes escritos dentro de las funciones, `RANDOM_LEO_ALTITUDE_RANGE_KM`, `PROPAGATOR_RELTOL`, `PROPAGATOR_ABSTOL`, `SPHERE_MESH_DIVISIONS`, `CYLINDER_MESH_DIVISIONS`, `CONE_MESH_DIVISIONS` y `FRAGMENT_NUM_POINTS_RANGE`. Mismos valores: los resultados no cambian.
