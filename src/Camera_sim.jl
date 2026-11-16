@@ -11,14 +11,16 @@
 # z_c = boresight.
 #
 # Intrínsecos (CameraIntrinsics, bloque camera_config): resolución, focales f_x, f_y (px),
-# punto principal (u0, v0) y skew α. Proyección pinhole con la matriz K (Memoria Nagoya,
-# ec. 2.5): u = f_x x' + α y' + u0, v = f_y y' + v0, con x' = x_c/z_c, y' = y_c/z_c. Píxeles
+# punto principal (u0, v0), skew α y distorsión de Brown-Conrady (k1, k2, k3 radiales y
+# p1, p2 tangenciales; Brown, 1966 y 1971). Proyección pinhole: coordenadas normalizadas
+# x' = x_c/z_c, y' = y_c/z_c, distorsión (x'', y'') y matriz K (Memoria Nagoya, ec. 2.5):
+# u = f_x x'' + α y'' + u0, v = f_y y'' + v0. Píxeles
 # desde 1 (el píxel k ocupa [k - ½, k + ½]). Una fuente se ve si su píxel cae dentro del
 # sensor (FOV rectangular); antes se descartan las que están fuera de un cono que contiene
 # todo el sensor (prefiltro rápido para el catálogo de estrellas).
 #
-# Funciones principales: CameraIntrinsics, camera_intrinsics, sensor_fov_deg,
-# prefilter_cone_deg, load_hipparcos, prefilter_box, filter_cone, radec_to_pixels!,
+# Funciones principales: CameraIntrinsics, camera_intrinsics, distort, undistort,
+# sensor_fov_deg, prefilter_cone_deg, load_hipparcos, prefilter_box, filter_cone, radec_to_pixels!,
 # prepare_render_dict, in_sensor, sources_in_view, gaussian_kernel, render_psf_gaussian!,
 # ruido (add_*), build_debris_catalog, err_meas!, star_frame, camera_sim! (punto de entrada)
 # y sus pasos: setup_star_field, frame_star_field!, start_frame!, paint_star_field!,
@@ -30,7 +32,7 @@
 
 module CameraSim
 
-export camera_sim!, CameraIntrinsics, camera_intrinsics, sensor_fov_deg
+export camera_sim!, CameraIntrinsics, camera_intrinsics, sensor_fov_deg, distort, undistort
 
 using FITSIO
 using DataFrames
@@ -45,17 +47,18 @@ using Dates
 using ..Types
 using ..Constants: DATA_DIR     # carpeta data/ (catálogo Hipparcos)
 using ..Parameters: FOV_PREFILTER_MARGIN   # margen del cono de prefiltro (parámetro maestro)
-using ..JSONUtils: todict, getnum           # lectura y validación de camera_config
+using ..JSONUtils: todict, getnum, check_keys   # lectura y validación de camera_config
 
 # -----------------------------------------------------------------------------
 # Intrínsecos de la cámara
 # -----------------------------------------------------------------------------
 
 """
-    CameraIntrinsics(resolution_x, resolution_y, fx_px, fy_px, u0_px, v0_px, skew_px)
+    CameraIntrinsics(resolution_x, resolution_y, fx_px, fy_px, u0_px, v0_px, skew_px[, k1, k2, k3, p1, p2])
 
 Parámetros intrínsecos de la cámara pinhole (Memoria Nagoya, ec. 2.5): resolución (px),
-focales efectivas en píxeles por radián, punto principal (px, desde 1) y skew α (px).
+focales efectivas en píxeles por radián, punto principal (px, desde 1), skew α (px) y
+coeficientes de distorsión de Brown-Conrady, adimensionales (por defecto 0, sin distorsión).
 Se construye y valida con `camera_intrinsics`.
 """
 struct CameraIntrinsics
@@ -66,14 +69,26 @@ struct CameraIntrinsics
     u0_px::Float64
     v0_px::Float64
     skew_px::Float64
+    k1::Float64
+    k2::Float64
+    k3::Float64
+    p1::Float64
+    p2::Float64
 end
+
+# Sin distorsión
+CameraIntrinsics(nx, ny, fx, fy, u0, v0, skew) = CameraIntrinsics(nx, ny, fx, fy, u0, v0, skew, 0.0, 0.0, 0.0, 0.0, 0.0)
+
+# Coeficientes del bloque "distortion" (todos opcionales)
+const DISTORTION_KEYS = ("k1", "k2", "k3", "p1", "p2")
 
 """
     camera_intrinsics(camera_config) -> CameraIntrinsics
 
 Lee y valida los intrínsecos del bloque `camera_config`. Obligatorios: `resolution_x`,
 `resolution_y`, `fx_px`, `fy_px`. Opcionales: `u0_px`, `v0_px` (por defecto, o si valen
-`null`, el centro del sensor, (N + 1)/2) y `skew_px` (por defecto 0).
+`null`, el centro del sensor, (N + 1)/2), `skew_px` (por defecto 0) y el bloque
+`distortion` con `k1`, `k2`, `k3`, `p1`, `p2` (cada uno por defecto 0).
 
 Por qué existe: los intrínsecos se validan una vez, al leer el JSON, y la cámara trabaja
 con un tipo de campos fijos.
@@ -85,8 +100,8 @@ con un tipo de campos fijos.
 - `CameraIntrinsics`.
 
 # Excepciones
-- `ErrorException`: si falta una clave obligatoria, la resolución no es un entero positivo
-  o una focal no es positiva.
+- `ErrorException`: si falta una clave obligatoria, la resolución no es un entero positivo,
+  una focal no es positiva o el bloque `distortion` tiene una clave desconocida.
 
 # Ejemplo
 ```julia
@@ -107,14 +122,91 @@ function camera_intrinsics(camera_config)
     u0 = get(b, "u0_px", nothing) === nothing ? (nx + 1) / 2 : getnum(b, "u0_px", who)
     v0 = get(b, "v0_px", nothing) === nothing ? (ny + 1) / 2 : getnum(b, "v0_px", who)
     skew = haskey(b, "skew_px") ? getnum(b, "skew_px", who) : 0.0
-    return CameraIntrinsics(Int(nx), Int(ny), fx, fy, u0, v0, skew)
+    k1, k2, k3, p1, p2 = distortion_coeffs(get(b, "distortion", Dict{String,Any}()), "$who.distortion")
+    return CameraIntrinsics(Int(nx), Int(ny), fx, fy, u0, v0, skew, k1, k2, k3, p1, p2)
 end
 
-# Coordenadas normalizadas (x', y') = (x_c/z_c, y_c/z_c) de un píxel (u, v): inversa de K
-function pixel_to_normalized(cam::CameraIntrinsics, u::Real, v::Real)
-    y = (v - cam.v0_px) / cam.fy_px
-    x = (u - cam.u0_px - cam.skew_px * y) / cam.fx_px
+# Coeficientes (k1, k2, k3, p1, p2) del bloque "distortion"; los que faltan valen 0
+function distortion_coeffs(d, who::AbstractString)
+    d isa AbstractDict || error("$who: must be a block {k1, k2, k3, p1, p2}.")
+    check_keys(d, DISTORTION_KEYS; who = who)
+    return Tuple(haskey(d, k) ? getnum(d, k, who) : 0.0 for k in DISTORTION_KEYS)
+end
+
+"""
+    distort(cam, x, y) -> (x_d, y_d)
+
+Aplica la distorsión de Brown-Conrady a unas coordenadas normalizadas (x, y) = (x_c/z_c, y_c/z_c)
+(Brown, 1966 y 1971; modelo de OpenCV y de `cameraIntrinsics` de MATLAB):
+
+    r² = x² + y²,   R = 1 + k1 r² + k2 r⁴ + k3 r⁶
+    x_d = x R + 2 p1 x y + p2 (r² + 2x²)
+    y_d = y R + p1 (r² + 2y²) + 2 p2 x y
+
+Los términos radiales (k) estiran o encogen la imagen con la distancia al centro; los
+tangenciales (p), la lente descentrada respecto al sensor.
+
+# Argumentos
+- `cam::CameraIntrinsics`; `x`, `y`: coordenadas normalizadas.
+
+# Devuelve
+- `(x_d, y_d)`, coordenadas normalizadas con distorsión.
+
+# Excepciones
+- Ninguna.
+
+# Ejemplo
+```julia
+distort(CameraIntrinsics(1024, 1024, 1e3, 1e3, 512.5, 512.5, 0.0, 0.1, 0, 0, 0, 0), 0.2, 0.0)   # (0.2008, 0.0)
+```
+"""
+function distort(cam::CameraIntrinsics, x::Real, y::Real)
+    r2 = x^2 + y^2
+    R = 1 + r2 * (cam.k1 + r2 * (cam.k2 + r2 * cam.k3))
+    xd = x * R + 2cam.p1 * x * y + cam.p2 * (r2 + 2x^2)
+    yd = y * R + cam.p1 * (r2 + 2y^2) + 2cam.p2 * x * y
+    return xd, yd
+end
+
+"""
+    undistort(cam, x_d, y_d; iters=50) -> (x, y)
+
+Inversa de `distort` por punto fijo (como `undistortPoints` de OpenCV): x = (x_d − Δ_t(x, y))/R(x, y),
+iterando desde (x_d, y_d). Converge mientras la distorsión sea moderada.
+
+Por qué existe: para saber qué dirección cae en una esquina del sensor (`prefilter_cone_deg`).
+
+# Argumentos
+- `cam::CameraIntrinsics`; `x_d`, `y_d`: coordenadas normalizadas con distorsión.
+- `iters::Int`: número de iteraciones.
+
+# Devuelve
+- `(x, y)`, coordenadas normalizadas sin distorsión.
+
+# Excepciones
+- Ninguna.
+"""
+function undistort(cam::CameraIntrinsics, xd::Real, yd::Real; iters::Int = 50)
+    x, y = Float64(xd), Float64(yd)
+    for _ in 1:iters
+        r2 = x^2 + y^2
+        R = 1 + r2 * (cam.k1 + r2 * (cam.k2 + r2 * cam.k3))
+        dx = 2cam.p1 * x * y + cam.p2 * (r2 + 2x^2)
+        dy = cam.p1 * (r2 + 2y^2) + 2cam.p2 * x * y
+        x, y = (xd - dx) / R, (yd - dy) / R
+    end
     return x, y
+end
+
+# Distorsión radial dentro de su dominio de validez: r_d = r R(r) creciente con r,
+# d(r R)/dr = 1 + 3k1 r² + 5k2 r⁴ + 7k3 r⁶ > 0. Fuera, el modelo "dobla" la imagen
+radial_distortion_ok(cam::CameraIntrinsics, r2::Real) = 1 + r2 * (3cam.k1 + r2 * (5cam.k2 + r2 * 7cam.k3)) > 0
+
+# Coordenadas normalizadas (x', y') = (x_c/z_c, y_c/z_c) de un píxel (u, v): inversa de K y de la distorsión
+function pixel_to_normalized(cam::CameraIntrinsics, u::Real, v::Real)
+    yd = (v - cam.v0_px) / cam.fy_px
+    xd = (u - cam.u0_px - cam.skew_px * yd) / cam.fx_px
+    return undistort(cam, xd, yd)
 end
 
 """
@@ -128,7 +220,7 @@ Con el punto principal centrado es `2 atan(N/(2 f_x))`. No es una entrada: se in
 - `cam::CameraIntrinsics`.
 
 # Devuelve
-- `(fov_x, fov_y)` en grados (sin skew ni distorsión).
+- `(fov_x, fov_y)` en grados (sin skew ni distorsión: es el FOV nominal de K).
 
 # Excepciones
 - Ninguna.
@@ -149,8 +241,10 @@ end
 Apertura total (°) del cono de prefiltro alrededor del boresight: el doble del ángulo a la
 esquina del sensor más alejada, multiplicado por `FOV_PREFILTER_MARGIN` y limitado a 179.8°.
 
-Por qué existe: filtrar el catálogo con un cono es rápido; el margen evita perder fuentes
-cuando la distorsión de la lente (tanda siguiente) lleva al sensor puntos de fuera.
+La esquina se pasa a dirección deshaciendo K y la distorsión (`pixel_to_normalized`).
+
+Por qué existe: filtrar el catálogo con un cono es rápido; el margen cubre los errores de
+la inversa de la distorsión y evita perder fuentes cerca del borde.
 
 # Argumentos
 - `cam::CameraIntrinsics`.
@@ -337,10 +431,11 @@ const OFF_IMAGE = typemin(Int) ÷ 2
 
 Proyecta direcciones (RA, Dec) sobre la imagen con el modelo pinhole y los intrínsecos de
 la cámara: se pasa cada dirección a ejes cámara y se divide por z_c (coordenadas
-normalizadas), y después se aplica la matriz K (Memoria Nagoya, ec. 2.5):
+normalizadas), se aplica la distorsión (`distort`) y después la matriz K (Memoria Nagoya,
+ec. 2.5):
 
-  ρ_c = C_ci · û_i,   x' = x_c/z_c,   y' = y_c/z_c,
-  u = f_x x' + α y' + u0,   v = f_y y' + v0.
+  ρ_c = C_ci · û_i,   x' = x_c/z_c,   y' = y_c/z_c,   (x'', y'') = distort(x', y'),
+  u = f_x x'' + α y'' + u0,   v = f_y y'' + v0.
 
 Ejes cámara dextrógiros (x_c derecha, y_c abajo, z_c = boresight); píxeles desde 1. Es la
 proyección gnomónica (TAN) del CE3 de I. Ferrando (ec. 2.15–2.19), con focales y punto
@@ -353,8 +448,9 @@ principal propios.
 - `cam::CameraIntrinsics`: intrínsecos.
 
 # Devuelve
-- `nothing` (rellena `x` e `y`, redondeados al píxel). Las fuentes detrás de la cámara
-  reciben `OFF_IMAGE`.
+- `nothing` (rellena `x` e `y`, redondeados al píxel). Las fuentes detrás de la cámara, o
+  fuera del dominio de validez de la distorsión radial (donde r(1 + k1 r² + ...) deja de
+  crecer y la imagen se doblaría), reciben `OFF_IMAGE`.
 
 # Excepciones
 - `AssertionError`: si los vectores no tienen la misma longitud.
@@ -384,10 +480,18 @@ function radec_to_pixels!(x::Vector{Int}, y::Vector{Int},
             continue
         end
 
-        # Coordenadas normalizadas y matriz K: x hacia la derecha y y hacia abajo
+        # Coordenadas normalizadas; fuera del dominio de la distorsión no hay imagen
         xn, yn = ρ[1] / ρ[3], ρ[2] / ρ[3]
-        x[i] = round(Int, cam.fx_px * xn + cam.skew_px * yn + cam.u0_px)
-        y[i] = round(Int, cam.fy_px * yn + cam.v0_px)
+        if !radial_distortion_ok(cam, xn^2 + yn^2)
+            x[i] = OFF_IMAGE
+            y[i] = OFF_IMAGE
+            continue
+        end
+
+        # Distorsión y matriz K: x hacia la derecha y y hacia abajo
+        xd, yd = distort(cam, xn, yn)
+        x[i] = round(Int, cam.fx_px * xd + cam.skew_px * yd + cam.u0_px)
+        y[i] = round(Int, cam.fy_px * yd + cam.v0_px)
     end
 
     return nothing

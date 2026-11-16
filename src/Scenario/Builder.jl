@@ -61,6 +61,8 @@ const DEFAULT_TEMPLATE = Dict{String,Any}(
         "u0_px"             => nothing,              # null = centro del sensor, (N + 1)/2
         "v0_px"             => nothing,
         "skew_px"           => 0.0,
+        "distortion"        => Dict{String,Any}(     # Brown-Conrady; 0 = sin distorsión
+            "k1" => 0.0, "k2" => 0.0, "k3" => 0.0, "p1" => 0.0, "p2" => 0.0),
         "mag0"              => 8.0,
         "flux0"             => 20000.0,
         "fwhm_deg"          => 0.0659,
@@ -170,6 +172,7 @@ const KEY_ORDER = [
     "ignore_fov_for_measurements_flag", "star_csv_flag",
     "camera_config", "photometry_config", "objectives", "observers", "stations_llh",
     "Vmag_lim", "resolution_x", "resolution_y", "fx_px", "fy_px", "u0_px", "v0_px", "skew_px",
+    "distortion", "k1", "k2", "k3", "p1", "p2",
     "mag0", "flux0", "fwhm_deg",
     "background_level", "sigma_read_noise", "upper_percentile", "lower_percentage", "los_sigma_arcsec",
     "phi_sun", "glare_angle_deg", "Vref_phong", "Fref_phong",

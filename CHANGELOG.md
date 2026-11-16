@@ -4,6 +4,15 @@ Cambios relevantes de SIRIUS en el Caso de Estudio 2. Formato basado en [Keep a 
 
 ## [Sin publicar]
 
+### 2026-11-16 (distorsión de la cámara)
+#### Añadido
+- Distorsión de Brown–Conrady en la cámara (Brown, 1966 y 1971; mismo modelo que OpenCV y `cameraIntrinsics` de MATLAB): bloque `distortion` de `camera_config` con `k1`, `k2`, `k3` (radiales) y `p1`, `p2` (tangenciales), todos opcionales y por defecto 0. Nuevos `CameraSim.distort` y `undistort` (inversa por punto fijo, para el cono de prefiltro).
+- Las direcciones fuera del dominio de validez de la distorsión radial (donde `r R(r)` deja de crecer) no se proyectan (`OFF_IMAGE`).
+
+#### Cambiado
+- `radec_to_pixels!` aplica la distorsión entre las coordenadas normalizadas y K. `prefilter_cone_deg` pasa las esquinas del sensor a dirección deshaciendo también la distorsión. Sin coeficientes, los resultados no cambian.
+- `CameraIntrinsics` lleva los cinco coeficientes; el constructor de 7 argumentos los deja a 0.
+
 ### 2026-11-15 (intrínsecos de la cámara)
 #### Añadido
 - `CameraSim.CameraIntrinsics` y `camera_intrinsics`: intrínsecos de la cámara pinhole (*Memoria Nagoya*, ec. 2.5), leídos y validados de `camera_config` al cargar el JSON. Claves nuevas: `fx_px`, `fy_px` (obligatorias), `u0_px`, `v0_px` (`null` = centro del sensor) y `skew_px` (por defecto 0). Píxeles desde 1.

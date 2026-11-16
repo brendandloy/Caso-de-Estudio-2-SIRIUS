@@ -4,7 +4,8 @@
 # Pruebas del módulo CameraSim con casos calculados a mano: conversión RA/Dec ->
 # vector y vuelta, intrínsecos (lectura, punto principal por defecto, errores, FOV del
 # sensor), proyección pinhole con K (centro, 100 px a la derecha y abajo, detrás de la
-# cámara, cámara girada, punto principal desplazado, skew), selección por sensor (FOV
+# cámara, cámara girada, punto principal desplazado, skew), distorsión de Brown-Conrady
+# (radial, tangencial, inversa, en píxeles, dominio de validez, prefiltro, lectura), selección por sensor (FOV
 # rectangular: esquina dentro, fuera del sensor no), PSF gaussiana (suma 1, mitad del
 # máximo a FWHM/2, elíptica con f_x ≠ f_y, conserva el flujo), escala de magnitudes y
 # filtro del cono.
@@ -96,6 +97,48 @@ const C = CameraSim                    # acceso corto a las funciones internas
         xb = zeros(Int, 1); yb = zeros(Int, 1)
         C.radec_to_pixels!(xb, yb, [0.0], [0.0], C_ci, cam)
         @test (xb[1], yb[1]) == (501, 501)
+    end
+
+    @testset "Distorsión de Brown-Conrady" begin
+        cam0 = C.CameraIntrinsics(1001, 1001, 1000.0, 1000.0, 501.0, 501.0, 0.0)
+        cam_k1 = C.CameraIntrinsics(1001, 1001, 1000.0, 1000.0, 501.0, 501.0, 0.0, 0.1, 0.0, 0.0, 0.0, 0.0)
+        cam_p1 = C.CameraIntrinsics(1001, 1001, 1000.0, 1000.0, 501.0, 501.0, 0.0, 0.0, 0.0, 0.0, 0.01, 0.0)
+        cam_p2 = C.CameraIntrinsics(1001, 1001, 1000.0, 1000.0, 501.0, 501.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.01)
+
+        # Sin coeficientes no cambia nada; radial: x_d = x (1 + k1 r²) = 0.2 · 1.004
+        @test C.distort(cam0, 0.2, -0.1) == (0.2, -0.1)
+        @test all(C.distort(cam_k1, 0.2, 0.0) .≈ (0.2008, 0.0))
+        # Tangenciales en (0.1, 0.1), r² = 0.02: p1 da (+2 p1 x y, + p1 (r² + 2y²)), p2 al revés
+        @test all(C.distort(cam_p1, 0.1, 0.1) .≈ (0.1002, 0.1004))
+        @test all(C.distort(cam_p2, 0.1, 0.1) .≈ (0.1004, 0.1002))
+        # La inversa recupera el punto
+        cam_all = C.CameraIntrinsics(1001, 1001, 1000.0, 1000.0, 501.0, 501.0, 0.0, -0.2, 0.05, 0.0, 0.001, -0.002)
+        @test all(C.undistort(cam_all, C.distort(cam_all, 0.25, -0.15)...) .≈ (0.25, -0.15))
+
+        # En píxeles: con k1 = 0.1 la dirección x' = 0.2 cae en u = 1000 · 0.2008 + 501 = 701.8 -> 702
+        d = normalize(SVector(0.2, 0.0, 1.0)); ra, dec = C.vec_to_radec(d)
+        x = zeros(Int, 1); y = zeros(Int, 1)
+        C.radec_to_pixels!(x, y, [ra], [dec], SMatrix{3,3,Float64,9}(I), cam0)
+        @test x[1] == 701
+        C.radec_to_pixels!(x, y, [ra], [dec], SMatrix{3,3,Float64,9}(I), cam_k1)
+        @test (x[1], y[1]) == (702, 501)
+
+        # Fuera del dominio de validez (k1 = -0.5: d(r R)/dr = 1 - 1.5 r² < 0 para r = 1) no hay imagen
+        cam_fold = C.CameraIntrinsics(1001, 1001, 1000.0, 1000.0, 501.0, 501.0, 0.0, -0.5, 0.0, 0.0, 0.0, 0.0)
+        d = normalize(SVector(1.0, 0.0, 1.0)); ra, dec = C.vec_to_radec(d)
+        C.radec_to_pixels!(x, y, [ra], [dec], SMatrix{3,3,Float64,9}(I), cam_fold)
+        @test x[1] == C.OFF_IMAGE
+
+        # Barril (k1 < 0): la esquina del sensor ve más lejos, así que el cono de prefiltro crece
+        cam_barrel = C.CameraIntrinsics(1001, 1001, 1000.0, 1000.0, 501.0, 501.0, 0.0, -0.2, 0.0, 0.0, 0.0, 0.0)
+        @test C.prefilter_cone_deg(cam_barrel) > C.prefilter_cone_deg(cam0)
+
+        # Lectura del bloque: coeficientes que faltan = 0; clave desconocida = error
+        b = Dict("resolution_x" => 1024, "resolution_y" => 1024, "fx_px" => 2000.0, "fy_px" => 2000.0,
+                 "distortion" => Dict("k1" => -0.1, "p2" => 0.001))
+        cam = C.camera_intrinsics(b)
+        @test (cam.k1, cam.k2, cam.k3, cam.p1, cam.p2) == (-0.1, 0.0, 0.0, 0.0, 0.001)
+        @test_throws ErrorException C.camera_intrinsics(merge(b, Dict("distortion" => Dict("k4" => 0.1))))
     end
 
     @testset "Selección por sensor (FOV rectangular)" begin
