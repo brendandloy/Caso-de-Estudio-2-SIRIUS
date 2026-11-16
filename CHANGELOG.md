@@ -4,6 +4,10 @@ Cambios relevantes de SIRIUS en el Caso de Estudio 2. Formato basado en [Keep a 
 
 ## [Sin publicar]
 
+### 2026-11-16 (ejemplo de distorsión)
+#### Añadido
+- `config/specs/ejemplo_distorsion.json`: el escenario de `ejemplo_actitud.json` con distorsión de barril (`camera_config.distortion.k1 = -0.2`) y el CSV de estrellas activado, para comparar con el ejemplo sin distorsión. `ejemplo_actitud.json` no cambia y sigue siendo la referencia de las regresiones.
+
 ### 2026-11-16 (distorsión de la cámara)
 #### Añadido
 - Distorsión de Brown–Conrady en la cámara (Brown, 1966 y 1971; mismo modelo que OpenCV y `cameraIntrinsics` de MATLAB): bloque `distortion` de `camera_config` con `k1`, `k2`, `k3` (radiales) y `p1`, `p2` (tangenciales), todos opcionales y por defecto 0. Nuevos `CameraSim.distort` y `undistort` (inversa por punto fijo, para el cono de prefiltro).

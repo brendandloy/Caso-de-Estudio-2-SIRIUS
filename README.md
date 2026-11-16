@@ -76,7 +76,7 @@ Ejemplo de *spec* (observador en LEO polar, objetivo en órbita kepleriana):
 }
 ```
 
-Hay más ejemplos en `config/specs/` (SSO + GEO, formaciones, CW, Walker, TLE, órbitas aleatorias y modos de actitud, formas y una cámara en `tracking` en `ejemplo_actitud.json`).
+Hay más ejemplos en `config/specs/` (SSO + GEO, formaciones, CW, Walker, TLE, órbitas aleatorias y modos de actitud, formas y una cámara en `tracking` en `ejemplo_actitud.json`; el mismo escenario con distorsión de barril, `k1 = -0.2`, en `ejemplo_distorsion.json`).
 
 ### Crear una spec nueva: `config/specs/plantilla.json`
 
