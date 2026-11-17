@@ -19,20 +19,25 @@
 # sensor (FOV rectangular); antes se descartan las que están fuera de un cono que contiene
 # todo el sensor (prefiltro rápido para el catálogo de estrellas).
 #
+# Exclusión solar: si el Sol está a menos de camera_config.sun_exclusion_deg del eje óptico,
+# su luz entra en la óptica y satura la imagen; en ese instante no se genera imagen ni
+# medidas. Cada instante queda en frame_status.csv con el ángulo Sol-boresight.
+#
 # Funciones principales: CameraIntrinsics, camera_intrinsics, distort, undistort,
-# sensor_fov_deg, prefilter_cone_deg, load_hipparcos, prefilter_box, filter_cone, radec_to_pixels!,
+# sensor_fov_deg, prefilter_cone_deg, sun_exclusion_deg, load_hipparcos, prefilter_box, filter_cone, radec_to_pixels!,
 # prepare_render_dict, in_sensor, sources_in_view, gaussian_kernel, render_psf_gaussian!,
 # ruido (add_*), build_debris_catalog, err_meas!, star_frame, camera_sim! (punto de entrada)
 # y sus pasos: setup_star_field, frame_star_field!, start_frame!, paint_star_field!,
-# sky_background, debris_in_view, log_debris!, finish_frame!, frame_name y star_catalog_rows.
+# sky_background, check_sun_exclusion!, debris_in_view, log_debris!, finish_frame!, frame_name
+# y star_catalog_rows.
 #
-# Dependencias: Types, Constants (DATA_DIR), Parameters (FOV_PREFILTER_MARGIN) y JSONUtils
-# (lectura de camera_config), que deben estar cargados antes.
+# Dependencias: Types, Constants (DATA_DIR), Parameters (FOV_PREFILTER_MARGIN), JSONUtils
+# (lectura de camera_config) y Visibility (ángulo Sol-boresight), que deben estar cargados antes.
 # =============================================================================
 
 module CameraSim
 
-export camera_sim!, CameraIntrinsics, camera_intrinsics, sensor_fov_deg, distort, undistort
+export camera_sim!, CameraIntrinsics, camera_intrinsics, sensor_fov_deg, sun_exclusion_deg, distort, undistort
 
 using FITSIO
 using DataFrames
@@ -48,6 +53,7 @@ using ..Types
 using ..Constants: DATA_DIR     # carpeta data/ (catálogo Hipparcos)
 using ..Parameters: FOV_PREFILTER_MARGIN   # margen del cono de prefiltro (parámetro maestro)
 using ..JSONUtils: todict, getnum, check_keys   # lectura y validación de camera_config
+using ..Visibility: sun_boresight_angle_deg      # exclusión solar de la cámara
 
 # -----------------------------------------------------------------------------
 # Intrínsecos de la cámara
@@ -124,6 +130,29 @@ function camera_intrinsics(camera_config)
     skew = haskey(b, "skew_px") ? getnum(b, "skew_px", who) : 0.0
     k1, k2, k3, p1, p2 = distortion_coeffs(get(b, "distortion", Dict{String,Any}()), "$who.distortion")
     return CameraIntrinsics(Int(nx), Int(ny), fx, fy, u0, v0, skew, k1, k2, k3, p1, p2)
+end
+
+"""
+    sun_exclusion_deg(camera_config) -> Float64
+
+Lee y valida `sun_exclusion_deg` de `camera_config`: semiángulo (°) del cono alrededor del
+eje óptico dentro del cual el Sol satura la imagen. Lo fija el diseño del parasol (*baffle*);
+valores típicos de sensores estelares, 30–45°.
+
+# Argumentos
+- `camera_config`: bloque `camera_config` del JSON (Dict o JSON3.Object).
+
+# Devuelve
+- `Float64` en [0, 180).
+
+# Excepciones
+- `ErrorException`: si falta la clave, no es un número o está fuera de [0, 180).
+"""
+function sun_exclusion_deg(camera_config)
+    who = "camera_config"
+    θ = getnum(todict(camera_config), "sun_exclusion_deg", who)
+    0 <= θ < 180 || error("$who: 'sun_exclusion_deg' must be in [0, 180) (got $θ).")
+    return θ
 end
 
 # Coeficientes (k1, k2, k3, p1, p2) del bloque "distortion"; los que faltan valen 0
@@ -885,12 +914,13 @@ function star_frame(stars_all::DataFrame, C_ci::AbstractMatrix, config)
 end
 
 """
-    camera_sim!(data, los_measurements, photometry_data, C_ci, obs_name, obj_names, output_path, config)
+    camera_sim!(data, los_measurements, photometry_data, C_ci, sun_dir, obs_name, obj_names, output_path, config)
 
-Simula la cámara de un observador: en cada instante selecciona las estrellas y
-los RSOs visibles dentro del FOV, los proyecta con la orientación de la cámara,
-genera la imagen (si `image_generation_flag`) y guarda medidas LOS y posiciones
-en píxeles.
+Simula la cámara de un observador: en cada instante comprueba la exclusión solar
+y, si el Sol no deslumbra la cámara, selecciona las estrellas y los RSOs visibles
+dentro del FOV, los proyecta con la orientación de la cámara, genera la imagen (si
+`image_generation_flag`) y guarda medidas LOS y posiciones en píxeles. En un
+instante deslumbrado no hay imagen ni medidas.
 
 La orientación de la cámara llega como C_ci (ECI -> cámara) por instante,
 calculada como C_cb · C_bi (montaje × actitud del satélite). Si es la misma en
@@ -902,21 +932,23 @@ se recalcula en cada imagen.
 - `los_measurements`: diccionario de salida con las medidas LOS de cada observador.
 - `photometry_data`: magnitud y visibilidad de cada par (observador, objetivo).
 - `C_ci::AbstractVector`: DCM ECI -> cámara de este observador, una por instante.
+- `sun_dir::AbstractVector`: dirección unitaria del Sol en ECI, una por instante.
 - `obs_name::Symbol`: observador.
 - `obj_names::Vector{Symbol}`: objetivos.
 - `output_path`: carpeta de resultados (se crea `output_path/obs_name/`).
-- `config`: `camera_config` con los flags.
+- `config`: `camera_config` con los flags y `sun_exclusion_deg`.
 
 # Devuelve
-- `nothing`. Escribe `debris_positions.csv`, los PNG (si se piden) y
+- `nothing`. Escribe `debris_positions.csv`, `frame_status.csv` (ángulo Sol-boresight y si
+  la cámara está deslumbrada en cada instante), los PNG (si se piden) y
   `observed_star_catalog.csv` (si `star_csv_flag`; con actitud variable lleva además
   la columna `image_name`).
 
 # Excepciones
-- `ErrorException`: si `C_ci` no tiene un valor por instante de la trayectoria.
+- `ErrorException`: si `C_ci` o `sun_dir` no tienen un valor por instante de la trayectoria.
 """
 function camera_sim!(data::Dict{Symbol,TrajectoryData}, los_measurements::Dict{Symbol, Dict{Symbol, Vector{LOSMeasurement}}}, photometry_data::Dict{Tuple{Symbol,Symbol},NamedTuple},
-    C_ci::AbstractVector, obs_name::Symbol, obj_names::Vector{Symbol}, output_path, config)
+    C_ci::AbstractVector, sun_dir::AbstractVector, obs_name::Symbol, obj_names::Vector{Symbol}, output_path, config)
 
     outdir = joinpath(output_path, String(obs_name))
     mkpath(outdir)
@@ -926,6 +958,8 @@ function camera_sim!(data::Dict{Symbol,TrajectoryData}, los_measurements::Dict{S
     obj_trajs = [data[name] for name in obj_names]
     length(C_ci) == length(obs_traj.r) ||
         error("camera_sim!: $(length(C_ci)) camera orientations for $(length(obs_traj.r)) time steps of '$obs_name'.")
+    length(sun_dir) == length(obs_traj.r) ||
+        error("camera_sim!: $(length(sun_dir)) Sun directions for $(length(obs_traj.r)) time steps of '$obs_name'.")
     obs_los = los_measurements[obs_name] = Dict{Symbol, Vector{LOSMeasurement}}()
 
     # --- Estrellas e imágenes, y tablas de salida ---
@@ -933,11 +967,13 @@ function camera_sim!(data::Dict{Symbol,TrajectoryData}, los_measurements::Dict{S
     debris_log = DataFrame(observer_name = String[], debris_name = String[], image_name = String[],
                            x_pix = Int[], y_pix = Int[], Vmag = String[])
     star_catalog = DataFrame(image_name = String[], x = Int[], y = Int[], Vmag = Float64[])
+    frame_status = DataFrame(image_name = String[], t_s = Float64[], sun_angle_deg = Float64[], is_sun_blinded = Bool[])
 
-    # --- Bucle temporal: estrellas -> RSOs (medidas, píxeles, PSF) -> ruido y PNG ---
+    # --- Bucle temporal: exclusión solar -> estrellas -> RSOs (medidas, píxeles, PSF) -> ruido y PNG ---
     for i in eachindex(obs_traj.r)
         C = C_ci[i]                                # orientación de la cámara en este instante
         image_name = frame_name(obs_traj.t[i])
+        check_sun_exclusion!(frame_status, C, sun_dir[i], obs_traj.t[i], image_name, config) && continue
 
         star_field = frame_star_field!(star_catalog, sky, C, image_name, config)
         config.image_generation_flag && start_frame!(sky, star_field, config)
@@ -957,9 +993,40 @@ function camera_sim!(data::Dict{Symbol,TrajectoryData}, los_measurements::Dict{S
     # Con actitud variable, un único CSV con las estrellas de cada imagen
     !sky.is_static && config.star_csv_flag && CSV.write(joinpath(outdir, "observed_star_catalog.csv"), star_catalog)
 
-    # Se escribe siempre (aunque no haya PNG): indica qué RSOs vio la cámara, cuándo y dónde
+    # Se escriben siempre (aunque no haya PNG): qué RSOs vio la cámara, cuándo y dónde, y en qué instantes observó
     CSV.write(joinpath(outdir, "debris_positions.csv"), debris_log; delim=';')
+    CSV.write(joinpath(outdir, "frame_status.csv"), frame_status)
     return nothing
+end
+
+"""
+    check_sun_exclusion!(frame_status, C_ci, u_sun, t, image_name, config) -> Bool
+
+Comprueba si el Sol deslumbra la cámara en un instante (ángulo Sol-boresight menor que
+`config.sun_exclusion_deg`) y añade el instante a `frame_status`.
+
+Por qué existe: separa del bucle de `camera_sim!` la decisión de observar o no y su registro.
+
+# Argumentos
+- `frame_status::DataFrame`: tabla de `frame_status.csv`; se modifica.
+- `C_ci::AbstractMatrix`: DCM ECI -> cámara en este instante.
+- `u_sun::SVector{3,Float64}`: dirección unitaria del Sol en ECI.
+- `t::Real`: instante (s); `image_name::AbstractString`: imagen del instante.
+- `config`: `camera_config` (usa `sun_exclusion_deg`).
+
+# Devuelve
+- `true` si la cámara está deslumbrada (no se observa en este instante).
+
+# Excepciones
+- Ninguna.
+"""
+function check_sun_exclusion!(frame_status::DataFrame, C_ci::AbstractMatrix, u_sun::SVector{3,Float64},
+                              t::Real, image_name::AbstractString, config)
+    θ_sun = sun_boresight_angle_deg(C_ci, u_sun)
+    is_sun_blinded = θ_sun < config.sun_exclusion_deg
+    push!(frame_status, (image_name = image_name, t_s = Float64(t), sun_angle_deg = round(θ_sun, digits = 3),
+                         is_sun_blinded = is_sun_blinded))
+    return is_sun_blinded
 end
 
 # Nombre del PNG de un instante t (s): "120.0.png"

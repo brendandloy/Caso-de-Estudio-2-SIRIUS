@@ -2,12 +2,13 @@
 # Visibility.jl
 #
 # Módulo Visibility: condiciones geométricas para que un objetivo se vea desde un
-# observador en un instante. Las usa Photometry antes de calcular la magnitud.
+# observador en un instante (las usa Photometry antes de calcular la magnitud) y para
+# que la cámara pueda observar (la usa CameraSim).
 #
 # Funciones:
-#   eclipseEarthECI : ¿está el objetivo en la sombra de la Tierra? (umbra / penumbra)
-#   losECI          : ¿hay línea de visión entre dos puntos, sin que la Tierra la corte?
-#   sunGlareConeECI : ¿está el objetivo dentro del cono de deslumbramiento del Sol?
+#   eclipseEarthECI         : ¿está el objetivo en la sombra de la Tierra? (umbra / penumbra)
+#   losECI                  : ¿hay línea de visión entre dos puntos, sin que la Tierra la corte?
+#   sun_boresight_angle_deg : ángulo entre el eje óptico de la cámara y el Sol (exclusión solar)
 #
 # Modelo: Tierra esférica de radio R = R_EARTH, Sol a distancia D = D_SUN con radio R☉ = R_SUN,
 # todo en ECI y en km. La dirección del Sol es la geocéntrica (la diferencia con la
@@ -18,7 +19,7 @@
 
 module Visibility
 
-export eclipseEarthECI, losECI, sunGlareConeECI
+export eclipseEarthECI, losECI, sun_boresight_angle_deg
 
 using ..Constants: R_EARTH, R_SUN, D_SUN
 
@@ -165,31 +166,35 @@ function losECI(r1::SVector{3,Float64}, r2::SVector{3,Float64})
 end
 
 """
-    sunGlareConeECI(u_sun, r_obs, r_obj, angMaxDeg) -> (Bool, Float64)
+    sun_boresight_angle_deg(C_ci, u_sun) -> Float64
 
-Indica si el objetivo, visto desde el observador, está a menos de `angMaxDeg` del Sol,
-dentro del cono en el que la luz solar deslumbra la cámara.
+Ángulo (°) entre el eje óptico (boresight) de la cámara y la dirección del Sol. El
+boresight es z_c = [0, 0, 1] en ejes cámara; como C_ci pasa de ECI a cámara, en ECI es
+C_ciᵀ [0, 0, 1]ᵀ, la tercera fila de C_ci, y el ángulo es θ☉ = arccos(b̂ · û☉).
 
-Por qué existe: aunque el objetivo esté iluminado y en LOS, cerca del Sol la cámara no
-puede observarlo.
+Por qué existe: si θ☉ es menor que el semiángulo de exclusión del parasol de la cámara
+(`camera_config.sun_exclusion_deg`), la luz del Sol entra en la óptica y satura toda la
+imagen, así que la cámara no observa en ese instante.
 
 # Argumentos
-- `u_sun::SVector{3,Float64}`: dirección unitaria hacia el Sol en ECI.
-- `r_obs::SVector{3,Float64}`, `r_obj::SVector{3,Float64}`: posiciones en ECI (km).
-- `angMaxDeg::Real`: semiángulo del cono de deslumbramiento (°).
+- `C_ci::AbstractMatrix`: DCM ECI -> cámara (3 × 3).
+- `u_sun::SVector{3,Float64}`: dirección unitaria del Sol en ECI (geocéntrica; el paralaje
+  desde la órbita es < 0,003° hasta GEO).
 
 # Devuelve
-- `(deslumbrado, angulo_deg)`: el ángulo Sol-objetivo visto desde el observador (°).
+- `Float64`: θ☉ en grados, en [0, 180].
 
 # Excepciones
-- Ninguna (si `r_obj == r_obs` el ángulo sale `NaN` y no hay deslumbramiento).
+- Ninguna.
+
+# Ejemplo
+```julia
+sun_boresight_angle_deg(I(3), SVector(0.0, 0.0, 1.0))   # 0.0: el Sol en el centro de la imagen
+```
 """
-function sunGlareConeECI(u_sun::SVector{3,Float64}, r_obs::SVector{3,Float64},
-                         r_obj::SVector{3,Float64}, angMaxDeg::Real)
-    u_obj = normalize(r_obj - r_obs)                 # dirección observador -> objetivo
-    ang_deg = acosd(clamp(dot(u_sun, u_obj), -1.0, 1.0))
-    TOL_DEG = 1e-6                                   # tolerancia angular (°)
-    return ang_deg <= angMaxDeg + TOL_DEG, ang_deg
+function sun_boresight_angle_deg(C_ci::AbstractMatrix, u_sun::SVector{3,Float64})
+    boresight = SVector(C_ci[3, 1], C_ci[3, 2], C_ci[3, 3])     # z_c en ECI: tercera fila de C_ci
+    return acosd(clamp(dot(boresight, u_sun), -1.0, 1.0))
 end
 
 end # module Visibility

@@ -29,12 +29,12 @@
       "sigma_read_noise": 100.0,
       "upper_percentile": 99.9,
       "lower_percentage": 0.0,
-      "los_sigma_arcsec": 42.43
+      "los_sigma_arcsec": 42.43,
+      "sun_exclusion_deg": 30.0
     },
 
     "photometry_config": {
       "phi_sun": 455.0,
-      "glare_angle_deg": 15.0,
       "Vref_phong": -10.0,
       "Fref_phong": 0.000001
     },

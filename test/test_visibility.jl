@@ -4,7 +4,7 @@
 # Pruebas del módulo Visibility con casos geométricos calculados a mano: eclipse
 # (umbra, penumbra e iluminado frente a los radios analíticos de los conos), línea
 # de visión (Tierra en medio, mismo lado, tangencia, extremos bajo la superficie) y
-# cono de deslumbramiento solar.
+# ángulo entre el Sol y el eje óptico de la cámara (exclusión solar).
 #
 # Uso (desde la raíz del repositorio):
 #   julia --project=. test/test_visibility.jl
@@ -74,19 +74,17 @@ const SUN_X = SVector(1.0, 0.0, 0.0)                 # dirección del Sol: +x EC
         @test !losECI(SVector(7000.0, 0, 0), SVector(7000.0, 0, 0))
     end
 
-    @testset "Cono de deslumbramiento" begin
-        r_obs = SVector(7000.0, 0, 0)
-        r_obj = SVector(7000.0, 1000, 0)             # visto en la dirección +y
+    @testset "Ángulo Sol-boresight" begin
+        # C_ci = I: el eje óptico es +z ECI; Sol en +z, +x y -z
+        Id = Matrix{Float64}(I, 3, 3)
+        @test sun_boresight_angle_deg(Id, SVector(0.0, 0, 1)) ≈ 0.0 atol = 1e-9
+        @test sun_boresight_angle_deg(Id, SUN_X) ≈ 90.0 atol = 1e-9
+        @test sun_boresight_angle_deg(Id, SVector(0.0, 0, -1)) ≈ 180.0 atol = 1e-9
 
-        # Sol a 10° de la línea de visión, con cono de 15°: deslumbrado
-        u_sun = SVector(sind(10), cosd(10), 0.0)
-        is_blinded, ang = sunGlareConeECI(u_sun, r_obs, r_obj, 15.0)
-        @test is_blinded
-        @test ang ≈ 10.0 atol = 1e-9
-
-        # Sol a 90°: no deslumbra
-        is_blinded, ang = sunGlareConeECI(SUN_X, r_obs, r_obj, 15.0)
-        @test !is_blinded
-        @test ang ≈ 90.0 atol = 1e-9
+        # Cámara girada con el eje óptico en +y ECI (filas x_c = +x, y_c = -z, z_c = +y; det = +1)
+        # y el Sol a 20° de +y en el plano xy
+        C_y = [1.0 0 0; 0 0 -1; 0 1 0]
+        @test det(C_y) ≈ 1.0
+        @test sun_boresight_angle_deg(C_y, SVector(sind(20), cosd(20), 0.0)) ≈ 20.0 atol = 1e-9
     end
 end

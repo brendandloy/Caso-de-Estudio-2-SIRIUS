@@ -3,8 +3,9 @@
 #
 # Módulo Photometry: magnitud aparente de cada objetivo visto desde cada observador
 # en cada instante, con el modelo de reflexión de Phong por facetas (CE2 de
-# A. Ortiz Tello). Antes comprueba con Visibility que el objetivo está iluminado,
-# en línea de visión y fuera del cono de deslumbramiento del Sol.
+# A. Ortiz Tello). Antes comprueba con Visibility que el objetivo está iluminado
+# y en línea de visión. El deslumbramiento por el Sol es de la cámara, no del
+# objetivo: lo comprueba CameraSim con la exclusión solar.
 #
 # Funciones: compute_apparent_magnitude (API), _compute_apparent_magnitude_epoch,
 # _phong_model.
@@ -20,7 +21,7 @@ export compute_apparent_magnitude
 using ..Types
 using ..Constants
 using ..Transformations
-using ..Visibility      # eclipse, línea de visión y deslumbramiento
+using ..Visibility      # eclipse y línea de visión
 using ..Geometry: DebrisModel
 
 using LinearAlgebra
@@ -43,11 +44,11 @@ se guarda en las medidas LOS.
 - `obs_traj::TrajectoryData`, `obj_traj::TrajectoryData`: trayectorias (ECI, km).
 - `sun_dir::Vector{SVector{3,Float64}}`: dirección del Sol en ECI en cada instante.
 - `debris::DebrisModel`: facetas y propiedades ópticas del objetivo (`generate_debris`).
-- `phot_cfg`: `photometry_config` (usa `phi_sun` y `glare_angle_deg`).
+- `phot_cfg`: `photometry_config` (usa `phi_sun`).
 - `DCM_t::Vector{SMatrix{3,3,Float64,9}}`: DCM cuerpo -> ECI del objetivo en cada instante.
 
 # Devuelve
-- `(t, Vmag, is_eclipsed, is_occluded, is_blinded, is_visible)`: vectores por instante;
+- `(t, Vmag, is_eclipsed, is_occluded, is_visible)`: vectores por instante;
   `Vmag = Inf` si el objetivo no se ve.
 
 # Excepciones
@@ -61,7 +62,6 @@ function compute_apparent_magnitude(obs_traj::TrajectoryData, obj_traj::Trajecto
     Vmag       = Vector{Float64}(undef, N)
     is_eclipsed = falses(N)
     is_occluded   = falses(N)
-    is_blinded    = falses(N)
     is_visible    = falses(N)
 
     u_n_eci = similar(debris.normals)                 # normales en ECI, reutilizadas en cada instante
@@ -77,7 +77,6 @@ function compute_apparent_magnitude(obs_traj::TrajectoryData, obj_traj::Trajecto
         Vmag[k]       = res.Vmag
         is_eclipsed[k] = res.is_eclipsed
         is_occluded[k]   = res.is_occluded
-        is_blinded[k]    = res.is_blinded
         is_visible[k]    = res.is_visible
     end
 
@@ -86,7 +85,6 @@ function compute_apparent_magnitude(obs_traj::TrajectoryData, obj_traj::Trajecto
         Vmag = Vmag,
         is_eclipsed = is_eclipsed,
         is_occluded = is_occluded,
-        is_blinded = is_blinded,
         is_visible = is_visible
     )
 end
@@ -98,8 +96,8 @@ end
 """
     _compute_apparent_magnitude_epoch(r_obs, r_obj, u_sun, u_n_eci, debris, phot_cfg) -> NamedTuple
 
-Visibilidad y magnitud en un instante: si el objetivo está en sombra, tapado por la
-Tierra o deslumbrado, `Vmag = Inf`; si no, la del modelo de Phong.
+Visibilidad y magnitud en un instante: si el objetivo está en sombra o tapado por la
+Tierra, `Vmag = Inf`; si no, la del modelo de Phong.
 
 Por qué existe: separa las condiciones de visibilidad (Visibility) del modelo de
 reflexión (`_phong_model`).
@@ -110,7 +108,7 @@ reflexión (`_phong_model`).
 - `debris::DebrisModel`, `phot_cfg`: como en `compute_apparent_magnitude`.
 
 # Devuelve
-- `(Vmag, is_eclipsed, is_occluded, is_blinded, is_visible)`.
+- `(Vmag, is_eclipsed, is_occluded, is_visible)`.
 
 # Excepciones
 - Ninguna.
@@ -121,13 +119,11 @@ reflexión (`_phong_model`).
     is_eclipsed, _ = eclipseEarthECI(r_obj, u_sun)
     has_los = losECI(r_obs, r_obj)
     is_occluded = !has_los
-    is_blinded, _ = sunGlareConeECI(u_sun, r_obs, r_obj, phot_cfg.glare_angle_deg)
 
-    if is_eclipsed || is_occluded || is_blinded
+    if is_eclipsed || is_occluded
         return (Vmag = Inf, 
                 is_eclipsed = is_eclipsed, 
                 is_occluded = is_occluded,
-                is_blinded = is_blinded, 
                 is_visible = false)
     end
 
@@ -140,7 +136,6 @@ reflexión (`_phong_model`).
     return (Vmag = Vmag, 
             is_eclipsed = false, 
             is_occluded = false,
-            is_blinded = false, 
             is_visible = has_valid_facets)
 end
 

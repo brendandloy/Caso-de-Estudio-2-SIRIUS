@@ -34,7 +34,7 @@ isdefined(Main, :Photometry)      || include(joinpath(ROOT, "src", "Photometry.j
 using .Types, .Geometry, .Photometry
 
 const SUN_X = SVector(1.0, 0.0, 0.0)                 # dirección del Sol: +x ECI
-const PHOT_CFG = (phi_sun = 455.0, glare_angle_deg = 15.0)
+const PHOT_CFG = (phi_sun = 455.0,)
 const C_SPEC, C_DIFF, AREA_KM2 = 0.3, 0.5, 1e-6      # placa de 1 m² (1e-6 km²)
 
 # Placa de una faceta con normal `normal` (ejes cuerpo)

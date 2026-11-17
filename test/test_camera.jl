@@ -7,13 +7,13 @@
 # cámara, cámara girada, punto principal desplazado, skew), distorsión de Brown-Conrady
 # (radial, tangencial, inversa, en píxeles, dominio de validez, prefiltro, lectura), selección por sensor (FOV
 # rectangular: esquina dentro, fuera del sensor no), PSF gaussiana (suma 1, mitad del
-# máximo a FWHM/2, elíptica con f_x ≠ f_y, conserva el flujo), escala de magnitudes y
-# filtro del cono.
+# máximo a FWHM/2, elíptica con f_x ≠ f_y, conserva el flujo), escala de magnitudes,
+# filtro del cono y exclusión solar (lectura y registro de los instantes deslumbrados).
 #
 # Uso (desde la raíz del repositorio):
 #   julia --project=. test/test_camera.jl
 #
-# Carga Types, Constants, Parameters, JSON_utils y Camera_sim (FITSIO, Images... tardan
+# Carga Types, Constants, Parameters, JSON_utils, Visibility y Camera_sim (FITSIO, Images... tardan
 # en cargar la primera vez). No lee el catálogo Hipparcos ni escribe imágenes.
 #
 # Funciones: ninguna (solo pruebas)
@@ -31,6 +31,7 @@ isdefined(Main, :Types)     || include(joinpath(ROOT, "src", "Types.jl"))
 isdefined(Main, :Constants) || include(joinpath(ROOT, "src", "Constants.jl"))
 isdefined(Main, :Parameters) || include(joinpath(ROOT, "src", "Parameters.jl"))
 isdefined(Main, :JSONUtils) || include(joinpath(ROOT, "src", "JSON_utils.jl"))
+isdefined(Main, :Visibility) || include(joinpath(ROOT, "src", "Visibility.jl"))
 isdefined(Main, :CameraSim) || include(joinpath(ROOT, "src", "Camera_sim.jl"))
 
 using .Types, .Constants
@@ -185,5 +186,21 @@ const C = CameraSim                    # acceso corto a las funciones internas
         stars = DataFrame(ra = [0.0, 0.0], dec = [0.0, 15.0], mag = [5.0, 5.0])
         kept = C.filter_cone(stars, SVector(1.0, 0, 0), 20.0)
         @test nrow(kept) == 1 && kept.dec[1] == 0.0
+    end
+
+    @testset "Exclusión solar" begin
+        # Lectura: 30° vale; 180° y la clave ausente dan error
+        @test C.sun_exclusion_deg(Dict("sun_exclusion_deg" => 30.0)) == 30.0
+        @test_throws ErrorException C.sun_exclusion_deg(Dict("sun_exclusion_deg" => 180.0))
+        @test_throws ErrorException C.sun_exclusion_deg(Dict{String,Any}())
+
+        # Eje óptico en +z ECI (C_ci = I) y exclusión de 30°: Sol a 20° deslumbra, a 40° no
+        status = DataFrame(image_name = String[], t_s = Float64[], sun_angle_deg = Float64[], is_sun_blinded = Bool[])
+        config = (sun_exclusion_deg = 30.0,)
+        Id = Matrix{Float64}(I, 3, 3)
+        @test C.check_sun_exclusion!(status, Id, SVector(sind(20), 0.0, cosd(20)), 0.0, "0.0.png", config)
+        @test !C.check_sun_exclusion!(status, Id, SVector(sind(40), 0.0, cosd(40)), 120.0, "120.0.png", config)
+        @test status.sun_angle_deg ≈ [20.0, 40.0]
+        @test status.is_sun_blinded == [true, false]
     end
 end

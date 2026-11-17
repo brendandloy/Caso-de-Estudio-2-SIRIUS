@@ -176,8 +176,9 @@ end
     simulate_observers!(env, data, photometry_data, sun_dir, output_path) -> Dict
 
 Para cada observador: calcula la actitud del satélite y la orientación de su
-cámara (C_ci = C_cb · C_bi) y simula la cámara, que escribe imágenes y posiciones
-en píxeles y devuelve las medidas LOS.
+cámara (C_ci = C_cb · C_bi) y simula la cámara, que descarta los instantes con el
+Sol cerca del eje óptico, escribe imágenes y posiciones en píxeles y devuelve las
+medidas LOS.
 
 Por qué existe: agrupa todo lo que depende de los observadores; el modo `tracking`
 necesita aquí las trayectorias de los objetivos.
@@ -205,7 +206,7 @@ function simulate_observers!(env, data, photometry_data, sun_dir, output_path)
         context = (camera_mount = C_cb, objective_names = keys(obj_trajs), trajectories = obj_trajs)
         spec = bind_attitude(env.obs_attitude[obs_name], context)
         C_ci = camera_dcm_history(C_cb, compute_attitude(spec, data[obs_name], sun_dir))   # ECI -> cámara
-        camera_sim!(data, los_data, photometry_data, C_ci, obs_name, env.obj_keys, output_path, env.camera_config)
+        camera_sim!(data, los_data, photometry_data, C_ci, sun_dir, obs_name, env.obj_keys, output_path, env.camera_config)
     end
     return los_data
 end

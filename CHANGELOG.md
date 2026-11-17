@@ -4,6 +4,21 @@ Cambios relevantes de SIRIUS en el Caso de Estudio 2. Formato basado en [Keep a 
 
 ## [Sin publicar]
 
+### 2026-11-17 (exclusión solar de la cámara)
+#### Añadido
+- Exclusión solar de la cámara: clave `camera_config.sun_exclusion_deg` (semiángulo del parasol, por defecto 30°). Si el Sol está a menos de ese ángulo del eje óptico, la cámara no observa en ese instante: no hay PNG, estrellas, posiciones de RSOs ni medidas LOS.
+- `Visibility.sun_boresight_angle_deg`: ángulo entre el eje óptico (fila 3 de `C_ci`) y el Sol.
+- `CameraSim.sun_exclusion_deg` (lectura y validación de la clave) y `check_sun_exclusion!`.
+- `frame_status.csv` por observador: ángulo Sol-eje óptico (°) y si la cámara está deslumbrada en cada instante.
+
+#### Cambiado
+- `camera_sim!` recibe la dirección del Sol (`sun_dir`) tras `C_ci`.
+- `compute_apparent_magnitude` ya no devuelve `is_blinded`: el deslumbramiento es de la cámara, no del objetivo.
+- El resumen de la configuración imprime la exclusión solar.
+
+#### Eliminado
+- `photometry_config.glare_angle_deg` y `Visibility.sunGlareConeECI` (cono de deslumbramiento por objetivo del CE2 de Ortiz). Una spec que ponga `glare_angle_deg` da ahora error de clave desconocida.
+
 ### 2026-11-16 (ejemplo de distorsión)
 #### Añadido
 - `config/specs/ejemplo_distorsion.json`: el escenario de `ejemplo_actitud.json` con distorsión de barril (`camera_config.distortion.k1 = -0.2`) y el CSV de estrellas activado, para comparar con el ejemplo sin distorsión. `ejemplo_actitud.json` no cambia y sigue siendo la referencia de las regresiones.

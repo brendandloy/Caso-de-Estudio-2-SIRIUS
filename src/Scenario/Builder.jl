@@ -70,11 +70,11 @@ const DEFAULT_TEMPLATE = Dict{String,Any}(
         "sigma_read_noise"  => 100.0,
         "upper_percentile"  => 99.9,
         "lower_percentage"  => 0.0,
-        "los_sigma_arcsec"  => 42.43
+        "los_sigma_arcsec"  => 42.43,
+        "sun_exclusion_deg" => 30.0                  # semiángulo de exclusión solar del parasol
     ),
     "photometry_config" => Dict{String,Any}(
         "phi_sun"         => 455.0,
-        "glare_angle_deg" => 15.0,
         "Vref_phong"      => -10.0,
         "Fref_phong"      => 0.000001
     ),
@@ -175,7 +175,7 @@ const KEY_ORDER = [
     "distortion", "k1", "k2", "k3", "p1", "p2",
     "mag0", "flux0", "fwhm_deg",
     "background_level", "sigma_read_noise", "upper_percentile", "lower_percentage", "los_sigma_arcsec",
-    "phi_sun", "glare_angle_deg", "Vref_phong", "Fref_phong",
+    "sun_exclusion_deg", "phi_sun", "Vref_phong", "Fref_phong",
     "SMA", "ECC", "INC", "RAAN", "AOP", "TA",
     "attitude", "camera_mount", "shape", "position_sigma_km", "velocity_sigma_km_s",
     # Dentro de los bloques "attitude", "camera_mount" y "shape": primero el tipo y luego sus parámetros
