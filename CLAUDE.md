@@ -72,6 +72,8 @@ Simulador de imágenes de objetos residentes en el espacio (RSOs) captados por c
 
 ## Commits
 
+El título y la descripción se dan en bloques de código separados, para copiarlos por separado en los dos campos de GitHub Desktop.
+
 Título y descripción para GitHub Desktop:
 
 ```

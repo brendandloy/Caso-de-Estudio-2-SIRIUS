@@ -23,16 +23,23 @@
 # su luz entra en la óptica y satura la imagen; en ese instante no se genera imagen ni
 # medidas. Cada instante queda en frame_status.csv con el ángulo Sol-boresight.
 #
+# Tierra: las estrellas que tapa la Tierra (esfera de radio R⊕ + altura de la atmósfera)
+# no se pintan; los RSOs tapados ya los quita la fotometría (losECI). El disco de la Tierra
+# queda negro, también de día. frame_status.csv guarda si la Tierra está en la imagen y qué
+# fracción ocupa, y cuánta de ella está de día, medidas con una malla de rayos.
+#
 # Funciones principales: CameraIntrinsics, camera_intrinsics, distort, undistort,
 # sensor_fov_deg, prefilter_cone_deg, sun_exclusion_deg, load_hipparcos, prefilter_box, filter_cone, radec_to_pixels!,
 # prepare_render_dict, in_sensor, sources_in_view, gaussian_kernel, render_psf_gaussian!,
 # ruido (add_*), build_debris_catalog, err_meas!, star_frame, camera_sim! (punto de entrada)
 # y sus pasos: setup_star_field, frame_star_field!, start_frame!, paint_star_field!,
-# sky_background, check_sun_exclusion!, debris_in_view, log_debris!, finish_frame!, frame_name
-# y star_catalog_rows.
+# sky_background, frame_conditions, earth_coverage (con is_earth_near_view, is_earth_on_border,
+# pixel_ray_eci y grid_centers), hide_stars_behind_earth, debris_in_view, log_debris!,
+# finish_frame!, frame_name y star_catalog_rows.
 #
-# Dependencias: Types, Constants (DATA_DIR), Parameters (FOV_PREFILTER_MARGIN), JSONUtils
-# (lectura de camera_config) y Visibility (ángulo Sol-boresight), que deben estar cargados antes.
+# Dependencias: Types, Constants (DATA_DIR), Parameters (FOV_PREFILTER_MARGIN,
+# EARTH_COVERAGE_GRID_SIZE), JSONUtils (lectura de camera_config) y Visibility (ángulo
+# Sol-boresight y geometría de la Tierra), que deben estar cargados antes.
 # =============================================================================
 
 module CameraSim
@@ -51,9 +58,9 @@ using Dates
 
 using ..Types
 using ..Constants: DATA_DIR     # carpeta data/ (catálogo Hipparcos)
-using ..Parameters: FOV_PREFILTER_MARGIN   # margen del cono de prefiltro (parámetro maestro)
+using ..Parameters: FOV_PREFILTER_MARGIN, EARTH_COVERAGE_GRID_SIZE   # parámetros maestros de la cámara
 using ..JSONUtils: todict, getnum, check_keys   # lectura y validación de camera_config
-using ..Visibility: sun_boresight_angle_deg      # exclusión solar de la cámara
+using ..Visibility: sun_boresight_angle_deg, earth_angular_radius_deg, earth_ray_hit, is_earth_occulted
 
 # -----------------------------------------------------------------------------
 # Intrínsecos de la cámara
@@ -920,7 +927,8 @@ Simula la cámara de un observador: en cada instante comprueba la exclusión sol
 y, si el Sol no deslumbra la cámara, selecciona las estrellas y los RSOs visibles
 dentro del FOV, los proyecta con la orientación de la cámara, genera la imagen (si
 `image_generation_flag`) y guarda medidas LOS y posiciones en píxeles. En un
-instante deslumbrado no hay imagen ni medidas.
+instante deslumbrado no hay imagen ni medidas. Las estrellas tapadas por la Tierra
+no se pintan.
 
 La orientación de la cámara llega como C_ci (ECI -> cámara) por instante,
 calculada como C_cb · C_bi (montaje × actitud del satélite). Si es la misma en
@@ -939,8 +947,9 @@ se recalcula en cada imagen.
 - `config`: `camera_config` con los flags y `sun_exclusion_deg`.
 
 # Devuelve
-- `nothing`. Escribe `debris_positions.csv`, `frame_status.csv` (ángulo Sol-boresight y si
-  la cámara está deslumbrada en cada instante), los PNG (si se piden) y
+- `nothing`. Escribe `debris_positions.csv`, `frame_status.csv` (en cada instante: ángulo
+  Sol-boresight, si la cámara está deslumbrada, si la Tierra está en la imagen, qué fracción
+  ocupa y qué fracción de la imagen es Tierra de día), los PNG (si se piden) y
   `observed_star_catalog.csv` (si `star_csv_flag`; con actitud variable lleva además
   la columna `image_name`).
 
@@ -967,15 +976,18 @@ function camera_sim!(data::Dict{Symbol,TrajectoryData}, los_measurements::Dict{S
     debris_log = DataFrame(observer_name = String[], debris_name = String[], image_name = String[],
                            x_pix = Int[], y_pix = Int[], Vmag = String[])
     star_catalog = DataFrame(image_name = String[], x = Int[], y = Int[], Vmag = Float64[])
-    frame_status = DataFrame(image_name = String[], t_s = Float64[], sun_angle_deg = Float64[], is_sun_blinded = Bool[])
+    frame_status = DataFrame(image_name = String[], t_s = Float64[], sun_angle_deg = Float64[], is_sun_blinded = Bool[],
+                             is_earth_in_view = Bool[], earth_fraction = Float64[], earth_daylight_fraction = Float64[])
 
-    # --- Bucle temporal: exclusión solar -> estrellas -> RSOs (medidas, píxeles, PSF) -> ruido y PNG ---
+    # --- Bucle temporal: Sol y Tierra -> estrellas -> RSOs (medidas, píxeles, PSF) -> ruido y PNG ---
     for i in eachindex(obs_traj.r)
         C = C_ci[i]                                # orientación de la cámara en este instante
         image_name = frame_name(obs_traj.t[i])
-        check_sun_exclusion!(frame_status, C, sun_dir[i], obs_traj.t[i], image_name, config) && continue
+        status = frame_conditions(C, obs_traj.r[i], sun_dir[i], config)
+        push!(frame_status, (image_name = image_name, t_s = Float64(obs_traj.t[i]), status...))
+        status.is_sun_blinded && continue          # cámara deslumbrada: sin imagen ni medidas
 
-        star_field = frame_star_field!(star_catalog, sky, C, image_name, config)
+        star_field = frame_star_field!(star_catalog, sky, C, obs_traj.r[i], image_name, config)
         config.image_generation_flag && start_frame!(sky, star_field, config)
 
         debris, debris_fov, render_debris = debris_in_view(obj_names, obj_trajs, photometry_data, obs_name, obs_traj.r[i], i, C, config)
@@ -1000,33 +1012,132 @@ function camera_sim!(data::Dict{Symbol,TrajectoryData}, los_measurements::Dict{S
 end
 
 """
-    check_sun_exclusion!(frame_status, C_ci, u_sun, t, image_name, config) -> Bool
+    frame_conditions(C_ci, r_obs, u_sun, config) -> NamedTuple
 
-Comprueba si el Sol deslumbra la cámara en un instante (ángulo Sol-boresight menor que
-`config.sun_exclusion_deg`) y añade el instante a `frame_status`.
+Condiciones de observación de un instante, las de `frame_status.csv`: ángulo entre el Sol y
+el eje óptico, si la cámara está deslumbrada (ángulo menor que `config.sun_exclusion_deg`)
+y la Tierra en la imagen (`earth_coverage`).
 
-Por qué existe: separa del bucle de `camera_sim!` la decisión de observar o no y su registro.
+Por qué existe: separa del bucle de `camera_sim!` la decisión de observar o no y lo que se
+registra de cada instante.
 
 # Argumentos
-- `frame_status::DataFrame`: tabla de `frame_status.csv`; se modifica.
 - `C_ci::AbstractMatrix`: DCM ECI -> cámara en este instante.
+- `r_obs::SVector{3,Float64}`: posición del observador en ECI (km).
 - `u_sun::SVector{3,Float64}`: dirección unitaria del Sol en ECI.
-- `t::Real`: instante (s); `image_name::AbstractString`: imagen del instante.
-- `config`: `camera_config` (usa `sun_exclusion_deg`).
+- `config`: `camera_config` (usa `sun_exclusion_deg` e `intrinsics`).
 
 # Devuelve
-- `true` si la cámara está deslumbrada (no se observa en este instante).
+- `(sun_angle_deg, is_sun_blinded, is_earth_in_view, earth_fraction, earth_daylight_fraction)`.
 
 # Excepciones
 - Ninguna.
 """
-function check_sun_exclusion!(frame_status::DataFrame, C_ci::AbstractMatrix, u_sun::SVector{3,Float64},
-                              t::Real, image_name::AbstractString, config)
+function frame_conditions(C_ci::AbstractMatrix, r_obs::SVector{3,Float64}, u_sun::SVector{3,Float64}, config)
     θ_sun = sun_boresight_angle_deg(C_ci, u_sun)
-    is_sun_blinded = θ_sun < config.sun_exclusion_deg
-    push!(frame_status, (image_name = image_name, t_s = Float64(t), sun_angle_deg = round(θ_sun, digits = 3),
-                         is_sun_blinded = is_sun_blinded))
-    return is_sun_blinded
+    sun = (sun_angle_deg = round(θ_sun, digits = 3), is_sun_blinded = θ_sun < config.sun_exclusion_deg)
+    return merge(sun, earth_coverage(C_ci, r_obs, u_sun, config.intrinsics))
+end
+
+"""
+    earth_coverage(C_ci, r_obs, u_sun, cam) -> NamedTuple
+
+Tierra en la imagen de un instante:
+- `is_earth_in_view`: si la Tierra toca la imagen. Un disco sin huecos que toca el sensor o
+  cruza su borde o cabe dentro, así que basta con mirar los píxeles del borde
+  (`is_earth_on_border`) y la malla; solo se escaparía una Tierra más pequeña que una celda
+  de la malla y lejos del borde.
+- `earth_fraction`: fracción de la imagen que es Tierra, con una malla de n × n rayos
+  (n = `EARTH_COVERAGE_GRID_SIZE`): rayos que chocan con la Tierra / n².
+- `earth_daylight_fraction`: fracción de la imagen que es Tierra de día: rayos cuyo punto
+  de choque P cumple P·û☉ > 0 (sin crepúsculo) / n².
+
+Si el disco de la Tierra no toca el cono de prefiltro (`is_earth_near_view`), no se lanza
+ningún rayo y todo vale `false` o 0.
+
+Por qué existe: la Tierra de día satura la cámara y está pendiente decidir qué hacer con
+esas imágenes; con estas columnas se pueden filtrar después sin repetir la simulación.
+
+# Argumentos
+- `C_ci::AbstractMatrix`: DCM ECI -> cámara; `r_obs`: posición del observador (ECI, km).
+- `u_sun::SVector{3,Float64}`: dirección unitaria del Sol en ECI.
+- `cam::CameraIntrinsics`.
+
+# Devuelve
+- `(is_earth_in_view, earth_fraction, earth_daylight_fraction)`.
+
+# Excepciones
+- Ninguna.
+"""
+function earth_coverage(C_ci::AbstractMatrix, r_obs::SVector{3,Float64}, u_sun::SVector{3,Float64}, cam::CameraIntrinsics)
+    is_earth_near_view(C_ci, r_obs, cam) ||
+        return (is_earth_in_view = false, earth_fraction = 0.0, earth_daylight_fraction = 0.0)
+    n = EARTH_COVERAGE_GRID_SIZE
+    hits = daylight = 0
+    for v in grid_centers(cam.resolution_y, n), u in grid_centers(cam.resolution_x, n)
+        P = earth_ray_hit(r_obs, pixel_ray_eci(cam, C_ci, u, v))
+        P === nothing && continue
+        hits += 1
+        daylight += dot(P, u_sun) > 0
+    end
+    is_in_view = hits > 0 || is_earth_on_border(C_ci, r_obs, cam)
+    return (is_earth_in_view = is_in_view, earth_fraction = hits / n^2, earth_daylight_fraction = daylight / n^2)
+end
+
+# ¿Toca el disco de la Tierra el cono de prefiltro? Ángulo eje óptico-nadir γ menos el
+# semiángulo de la Tierra ρ⊕, frente al semiángulo del cono (prefiltro rápido)
+function is_earth_near_view(C_ci::AbstractMatrix, r_obs::SVector{3,Float64}, cam::CameraIntrinsics)
+    nadir = -r_obs / norm(r_obs)
+    γ = acosd(clamp(dot(boresight_eci(C_ci), nadir), -1.0, 1.0))
+    return γ - earth_angular_radius_deg(r_obs) <= prefilter_cone_deg(cam) / 2
+end
+
+# ¿Choca con la Tierra el rayo de algún píxel del borde del sensor?
+function is_earth_on_border(C_ci::AbstractMatrix, r_obs::SVector{3,Float64}, cam::CameraIntrinsics)
+    nx, ny = cam.resolution_x, cam.resolution_y
+    border = Iterators.flatten((((u, v) for u in 1:nx, v in (1, ny)), ((u, v) for u in (1, nx), v in 2:ny-1)))
+    return any(px -> earth_ray_hit(r_obs, pixel_ray_eci(cam, C_ci, px...)) !== nothing, border)
+end
+
+# Dirección unitaria en ECI del rayo que llega al píxel (u, v): deshace K y la distorsión
+# (coordenadas normalizadas) y pasa de ejes cámara a ECI con C_ciᵀ
+function pixel_ray_eci(cam::CameraIntrinsics, C_ci::AbstractMatrix, u::Real, v::Real)
+    x, y = pixel_to_normalized(cam, u, v)
+    return normalize(SVector{3,Float64}(C_ci' * SVector(x, y, 1.0)))
+end
+
+# Centros de n celdas iguales a lo largo de N píxeles (el sensor va de ½ a N + ½)
+grid_centers(N::Integer, n::Integer) = range(0.5 + N / (2n), N + 0.5 - N / (2n); length = n)
+
+"""
+    hide_stars_behind_earth(field, r_obs, C_ci, cam) -> NamedTuple
+
+Campo estelar sin las estrellas que tapa la Tierra vista desde `r_obs` (`is_earth_occulted`).
+Si la Tierra está lejos de la imagen (`is_earth_near_view`) o no tapa ninguna, devuelve el
+mismo `field`, sin copiarlo.
+
+Por qué existe: las estrellas están en el infinito, así que la Tierra tapa siempre la misma
+parte del cielo vista desde un punto; la fotometría ya quita los RSOs tapados, pero las
+estrellas no pasan por ella. Con actitud constante, devolver el mismo objeto permite seguir
+usando la imagen de fondo precalculada en los instantes sin Tierra.
+
+# Argumentos
+- `field`: campo estelar (`star_frame`), o `nothing`.
+- `r_obs::SVector{3,Float64}`: posición del observador en ECI (km).
+- `C_ci::AbstractMatrix`: DCM ECI -> cámara; `cam::CameraIntrinsics`.
+
+# Devuelve
+- `(stars, render)` con las estrellas visibles, o `field` sin cambios.
+
+# Excepciones
+- Ninguna.
+"""
+function hide_stars_behind_earth(field, r_obs::SVector{3,Float64}, C_ci::AbstractMatrix, cam::CameraIntrinsics)
+    (field === nothing || !is_earth_near_view(C_ci, r_obs, cam)) && return field
+    is_visible = [!is_earth_occulted(r_obs, radec_to_vec(ra, dec)) for (ra, dec) in zip(field.stars.ra, field.stars.dec)]
+    all(is_visible) && return field
+    r = field.render
+    return (stars = field.stars[is_visible, :], render = (x = r.x[is_visible], y = r.y[is_visible], flux = r.flux[is_visible]))
 end
 
 # Nombre del PNG de un instante t (s): "120.0.png"
@@ -1075,10 +1186,11 @@ function setup_star_field(C_ci::AbstractVector, outdir::AbstractString, config)
 end
 
 """
-    frame_star_field!(star_catalog, sky, C_ci, image_name, config) -> Union{NamedTuple, Nothing}
+    frame_star_field!(star_catalog, sky, C_ci, r_obs, image_name, config) -> Union{NamedTuple, Nothing}
 
 Campo estelar de un instante: el estático de `setup_star_field` o, con actitud
-variable, uno nuevo con la orientación de la cámara, cuyas estrellas se añaden a
+variable, uno nuevo con la orientación de la cámara, sin las estrellas que tapa la
+Tierra (`hide_stars_behind_earth`). Con actitud variable, sus estrellas se añaden a
 `star_catalog` (si `star_csv_flag`).
 
 Por qué existe: separa del bucle de `camera_sim!` la diferencia entre actitud
@@ -1088,18 +1200,23 @@ constante y variable.
 - `star_catalog::DataFrame`: estrellas de cada imagen (actitud variable); se modifica.
 - `sky`: salida de `setup_star_field`.
 - `C_ci::AbstractMatrix`: DCM ECI -> cámara en este instante.
+- `r_obs::SVector{3,Float64}`: posición del observador en ECI (km).
 - `image_name::AbstractString`: imagen del instante.
 - `config`: `camera_config`.
 
 # Devuelve
-- El campo estelar (`star_frame`), o `nothing` si no hacen falta estrellas.
+- El campo estelar (`star_frame`), o `nothing` si no hacen falta estrellas. Con actitud
+  constante y sin estrellas tapadas, es el mismo objeto que `sky.field`.
 
 # Excepciones
 - Ninguna.
 """
-function frame_star_field!(star_catalog::DataFrame, sky, C_ci::AbstractMatrix, image_name::AbstractString, config)
-    (sky.is_static || !sky.needs_stars) && return sky.field
-    field = star_frame(sky.stars_all, C_ci, config)
+function frame_star_field!(star_catalog::DataFrame, sky, C_ci::AbstractMatrix, r_obs::SVector{3,Float64},
+                           image_name::AbstractString, config)
+    sky.needs_stars || return nothing
+    cam = config.intrinsics
+    sky.is_static && return hide_stars_behind_earth(sky.field, r_obs, C_ci, cam)
+    field = hide_stars_behind_earth(star_frame(sky.stars_all, C_ci, config), r_obs, C_ci, cam)
     if config.star_csv_flag
         rows = star_catalog_rows(field)
         insertcols!(rows, 1, :image_name => fill(image_name, nrow(rows)))   # primera columna: imagen
@@ -1112,7 +1229,8 @@ end
     start_frame!(sky, star_field, config) -> Nothing
 
 Deja en la imagen de trabajo `sky.img` las estrellas y el fondo del instante: copia
-la imagen de fondo con actitud constante, o la pinta de nuevo con actitud variable.
+la imagen de fondo si el campo es el estático sin cambios, o la pinta de nuevo (actitud
+variable, o la Tierra tapa estrellas del campo estático).
 
 Por qué existe: es el primer paso de cada imagen en `camera_sim!`, antes de los RSOs.
 
@@ -1128,7 +1246,7 @@ Por qué existe: es el primer paso de cada imagen en `camera_sim!`, antes de los
 - Ninguna.
 """
 function start_frame!(sky, star_field, config)
-    if sky.is_static
+    if sky.is_static && star_field === sky.field     # campo estático sin estrellas tapadas
         copyto!(sky.img, sky.img_static)
     else
         fill!(sky.img, 0.0)
@@ -1191,8 +1309,8 @@ end
 """
     debris_in_view(obj_names, obj_trajs, photometry_data, obs_name, r_obs, i, C_ci, config) -> (DataFrame, DataFrame, NamedTuple)
 
-RSOs visibles desde el observador en el instante `i` (iluminados, en LOS y sin
-deslumbramiento, según la fotometría) y, de ellos, los que caen en el sensor de la cámara
+RSOs visibles desde el observador en el instante `i` (iluminados y en LOS, según la
+fotometría) y, de ellos, los que caen en el sensor de la cámara
 (`sources_in_view`), con sus píxeles.
 
 Por qué existe: separa la selección de RSOs del bucle de `camera_sim!`.

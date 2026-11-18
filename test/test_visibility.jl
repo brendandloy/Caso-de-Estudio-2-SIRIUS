@@ -3,13 +3,14 @@
 #
 # Pruebas del módulo Visibility con casos geométricos calculados a mano: eclipse
 # (umbra, penumbra e iluminado frente a los radios analíticos de los conos), línea
-# de visión (Tierra en medio, mismo lado, tangencia, extremos bajo la superficie) y
-# ángulo entre el Sol y el eje óptico de la cámara (exclusión solar).
+# de visión (Tierra en medio, mismo lado, atmósfera, extremos bajo la superficie),
+# ángulo entre el Sol y el eje óptico de la cámara (exclusión solar) y la Tierra vista
+# desde el observador (radio con la atmósfera, semiángulo del disco, choque de un rayo).
 #
 # Uso (desde la raíz del repositorio):
 #   julia --project=. test/test_visibility.jl
 #
-# Es ligero: solo carga Constants y Visibility. Sol en +x ECI en todas las pruebas
+# Es ligero: solo carga Constants, Parameters y Visibility. Sol en +x ECI en todas las pruebas
 # de eclipse; distancias en km.
 #
 # Funciones: ninguna (solo pruebas)
@@ -23,9 +24,10 @@ using StaticArrays
 const ROOT = normpath(joinpath(@__DIR__, ".."))
 
 isdefined(Main, :Constants)  || include(joinpath(ROOT, "src", "Constants.jl"))
+isdefined(Main, :Parameters) || include(joinpath(ROOT, "src", "Parameters.jl"))
 isdefined(Main, :Visibility) || include(joinpath(ROOT, "src", "Visibility.jl"))
 
-using .Constants, .Visibility
+using .Constants, .Parameters, .Visibility
 
 const SUN_X = SVector(1.0, 0.0, 0.0)                 # dirección del Sol: +x ECI
 
@@ -57,11 +59,12 @@ const SUN_X = SVector(1.0, 0.0, 0.0)                 # dirección del Sol: +x EC
         @test !losECI(SVector(7000.0, 0, 0), SVector(-7000.0, 0, 0))
         @test losECI(SVector(7000.0, 0, 0), SVector(7000.0, 1000, 0))
 
-        # Segmento que pasa a 10 km por encima o por debajo de la superficie
-        h = R_EARTH + 10.0
-        @test losECI(SVector(-8000.0, h, 0), SVector(8000.0, h, 0))
-        h = R_EARTH - 10.0
-        @test !losECI(SVector(-8000.0, h, 0), SVector(8000.0, h, 0))
+        # Segmento que pasa 10 km por encima de la atmósfera (visible), 10 km por debajo de su
+        # límite (tapado por la atmósfera) y 10 km bajo la superficie (tapado)
+        R_atm = R_EARTH + EARTH_ATMOSPHERE_ALTITUDE_KM
+        for (h, has_los) in ((R_atm + 10.0, true), (R_atm - 10.0, false), (R_EARTH - 10.0, false))
+            @test losECI(SVector(-8000.0, h, 0), SVector(8000.0, h, 0)) == has_los
+        end
 
         # Los dos puntos al otro lado del mismo hemisferio (la recta corta la esfera fuera del segmento)
         @test losECI(SVector(7000.0, 0, 0), SVector(9000.0, 0, 0))
@@ -72,6 +75,27 @@ const SUN_X = SVector(1.0, 0.0, 0.0)                 # dirección del Sol: +x EC
 
         # Puntos coincidentes: sin LOS
         @test !losECI(SVector(7000.0, 0, 0), SVector(7000.0, 0, 0))
+    end
+
+    @testset "Tierra vista desde el observador" begin
+        # Radio que tapa: con la atmósfera si los dos puntos están por encima de ella; si no, la superficie
+        R_atm = R_EARTH + EARTH_ATMOSPHERE_ALTITUDE_KM
+        @test earth_occulting_radius(SVector(7000.0, 0, 0)) == R_atm
+        @test earth_occulting_radius(SVector(7000.0, 0, 0), SVector(R_EARTH + 50, 0, 0)) == R_EARTH
+
+        # A 2R del centro, el disco de la Tierra tiene un semiángulo de 30° (sin ρ = 1/2)
+        @test earth_angular_radius_deg(SVector(2R_atm, 0, 0)) ≈ 30.0
+
+        # Rayos desde x = 10000 km: hacia el centro choca en x = R; hacia fuera y en perpendicular, no
+        r_obs = SVector(10000.0, 0, 0)
+        @test earth_ray_hit(r_obs, SVector(-1.0, 0, 0)) ≈ SVector(R_atm, 0, 0)
+        @test earth_ray_hit(r_obs, SVector(1.0, 0, 0)) === nothing
+        @test !is_earth_occulted(r_obs, SVector(0.0, 1, 0))
+
+        # Direcciones a ρ⊕ ∓ 0,01° del nadir: dentro del disco (tapada) y fuera (visible)
+        ρ = earth_angular_radius_deg(r_obs)
+        @test is_earth_occulted(r_obs, SVector(-cosd(ρ - 0.01), sind(ρ - 0.01), 0))
+        @test !is_earth_occulted(r_obs, SVector(-cosd(ρ + 0.01), sind(ρ + 0.01), 0))
     end
 
     @testset "Ángulo Sol-boresight" begin

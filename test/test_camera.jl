@@ -8,7 +8,8 @@
 # (radial, tangencial, inversa, en píxeles, dominio de validez, prefiltro, lectura), selección por sensor (FOV
 # rectangular: esquina dentro, fuera del sensor no), PSF gaussiana (suma 1, mitad del
 # máximo a FWHM/2, elíptica con f_x ≠ f_y, conserva el flujo), escala de magnitudes,
-# filtro del cono y exclusión solar (lectura y registro de los instantes deslumbrados).
+# filtro del cono, exclusión solar (lectura y condiciones de cada instante) y la Tierra
+# en la imagen (fracción ocupada y de día, borde del sensor, estrellas tapadas).
 #
 # Uso (desde la raíz del repositorio):
 #   julia --project=. test/test_camera.jl
@@ -34,7 +35,7 @@ isdefined(Main, :JSONUtils) || include(joinpath(ROOT, "src", "JSON_utils.jl"))
 isdefined(Main, :Visibility) || include(joinpath(ROOT, "src", "Visibility.jl"))
 isdefined(Main, :CameraSim) || include(joinpath(ROOT, "src", "Camera_sim.jl"))
 
-using .Types, .Constants
+using .Types, .Constants, .Parameters
 const C = CameraSim                    # acceso corto a las funciones internas
 
 @testset "Camera" begin
@@ -194,13 +195,52 @@ const C = CameraSim                    # acceso corto a las funciones internas
         @test_throws ErrorException C.sun_exclusion_deg(Dict("sun_exclusion_deg" => 180.0))
         @test_throws ErrorException C.sun_exclusion_deg(Dict{String,Any}())
 
-        # Eje óptico en +z ECI (C_ci = I) y exclusión de 30°: Sol a 20° deslumbra, a 40° no
-        status = DataFrame(image_name = String[], t_s = Float64[], sun_angle_deg = Float64[], is_sun_blinded = Bool[])
-        config = (sun_exclusion_deg = 30.0,)
+        # Eje óptico en +z ECI (C_ci = I), observador en +z (la Tierra queda detrás) y exclusión
+        # de 30°: el Sol a 20° deslumbra y a 40° no; la Tierra, a 180° del eje óptico, no sale
+        cam = C.CameraIntrinsics(1024, 1024, 2132.6334822862937, 2132.6334822862937, 512.5, 512.5, 0.0)
+        config = (sun_exclusion_deg = 30.0, intrinsics = cam)
         Id = Matrix{Float64}(I, 3, 3)
-        @test C.check_sun_exclusion!(status, Id, SVector(sind(20), 0.0, cosd(20)), 0.0, "0.0.png", config)
-        @test !C.check_sun_exclusion!(status, Id, SVector(sind(40), 0.0, cosd(40)), 120.0, "120.0.png", config)
-        @test status.sun_angle_deg ≈ [20.0, 40.0]
-        @test status.is_sun_blinded == [true, false]
+        r_obs = SVector(0.0, 0.0, 7000.0)
+        st = C.frame_conditions(Id, r_obs, SVector(sind(20), 0.0, cosd(20)), config)
+        @test st.is_sun_blinded && st.sun_angle_deg ≈ 20.0
+        st = C.frame_conditions(Id, r_obs, SVector(sind(40), 0.0, cosd(40)), config)
+        @test !st.is_sun_blinded && st.sun_angle_deg ≈ 40.0
+        @test !st.is_earth_in_view && st.earth_fraction == 0.0
+    end
+
+    @testset "Tierra en la imagen" begin
+        cam = C.CameraIntrinsics(1024, 1024, 2132.6334822862937, 2132.6334822862937, 512.5, 512.5, 0.0)
+        R_atm = R_EARTH + EARTH_ATMOSPHERE_ALTITUDE_KM
+        C_nadir = [1.0 0 0; 0 -1 0; 0 0 -1]       # eje óptico en -z (filas x_c = +x, y_c = -y, z_c = -z; det = +1)
+
+        # Desde 7000 km del centro, mirando al nadir, la Tierra (ρ⊕ = 67,7°) llena la imagen: toda
+        # de día con el Sol detrás del observador y toda de noche con el Sol detrás de la Tierra
+        r_leo = SVector(0.0, 0, 7000.0)
+        e = C.earth_coverage(C_nadir, r_leo, SVector(0.0, 0, 1), cam)
+        @test e.is_earth_in_view && e.earth_fraction == 1.0 && e.earth_daylight_fraction == 1.0
+        @test C.earth_coverage(C_nadir, r_leo, SVector(0.0, 0, -1), cam).earth_daylight_fraction == 0.0
+
+        # Desde lejos, un disco de f tan ρ⊕ = 300 px de radio en el centro: fracción π·300²/1024² ≈ 0,270;
+        # con el Sol en +x, la mitad de día (la malla es simétrica respecto a x = 0)
+        r_far = SVector(0.0, 0, R_atm / sin(atan(300 / cam.fx_px)))
+        e = C.earth_coverage(C_nadir, r_far, SVector(1.0, 0, 0), cam)
+        @test e.is_earth_in_view
+        @test e.earth_fraction ≈ π * 300^2 / 1024^2 atol = 0.005
+        @test e.earth_daylight_fraction ≈ e.earth_fraction / 2
+
+        # Disco de 5 px de radio centrado fuera de la esquina, en el píxel (-2, -2): no lo toca ningún
+        # rayo de la malla (el primero está en (8,5; 8,5)), pero sí el borde del sensor
+        d = normalize(SVector((-2 - 512.5) / cam.fx_px, (-2 - 512.5) / cam.fy_px, 1.0))   # C_ci = I: ejes cámara = ECI
+        r_corner = -(R_atm / sin(5 / cam.fx_px)) * d           # la Tierra queda en la dirección d
+        e = C.earth_coverage(Matrix{Float64}(I, 3, 3), r_corner, SVector(1.0, 0, 0), cam)
+        @test e.is_earth_in_view && e.earth_fraction == 0.0
+
+        # Estrellas cerca del polo sur (-z): las tapa la Tierra vista desde +z; mirando al otro lado
+        # desde -z la Tierra queda detrás y el campo se devuelve sin copiar
+        field = (stars = DataFrame(ra = [0.0, 90.0], dec = [-89.0, -88.0], mag = [5.0, 6.0]),
+                 render = (x = [1, 2], y = [3, 4], flux = [1.0, 2.0]))
+        hidden = C.hide_stars_behind_earth(field, r_leo, C_nadir, cam)
+        @test nrow(hidden.stars) == 0 && isempty(hidden.render.x)
+        @test C.hide_stars_behind_earth(field, SVector(0.0, 0, -7000.0), C_nadir, cam) === field
     end
 end

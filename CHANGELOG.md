@@ -4,6 +4,20 @@ Cambios relevantes de SIRIUS en el Caso de Estudio 2. Formato basado en [Keep a 
 
 ## [Sin publicar]
 
+### 2026-11-18 (la Tierra delante de la cámara)
+#### Añadido
+- Las estrellas que tapa la Tierra ya no se pintan (`CameraSim.hide_stars_behind_earth`). El disco de la Tierra queda negro, también de día.
+- `Visibility`: `earth_occulting_radius`, `earth_angular_radius_deg`, `earth_ray_hit` e `is_earth_occulted`.
+- Parámetros maestros `EARTH_ATMOSPHERE_ALTITUDE_KM = 100` (la Tierra tapa como una esfera de radio R⊕ + 100 km) y `EARTH_COVERAGE_GRID_SIZE = 64`.
+- Columnas de `frame_status.csv`: `is_earth_in_view`, `earth_fraction` y `earth_daylight_fraction` (`CameraSim.earth_coverage`).
+
+#### Cambiado
+- `losECI` usa la esfera de radio R⊕ + 100 km si los dos extremos están por encima de esa altura: un RSO cuya línea de visión roza la Tierra a menos de 100 km de altura deja de verse.
+- `frame_star_field!` recibe la posición del observador; con actitud constante, la imagen de fondo precalculada se vuelve a pintar en los instantes en que la Tierra tapa estrellas.
+
+#### Eliminado
+- `CameraSim.check_sun_exclusion!`, sustituida por `frame_conditions`, que devuelve también la Tierra en la imagen.
+
 ### 2026-11-17 (exclusión solar de la cámara)
 #### Añadido
 - Exclusión solar de la cámara: clave `camera_config.sun_exclusion_deg` (semiángulo del parasol, por defecto 30°). Si el Sol está a menos de ese ángulo del eje óptico, la cámara no observa en ese instante: no hay PNG, estrellas, posiciones de RSOs ni medidas LOS.

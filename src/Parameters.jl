@@ -29,6 +29,8 @@ module Parameters
 #   TLE_MAX_DAYS                : antigüedad máxima de un TLE respecto a init_epoch (aviso)
 #   PROPAGATOR_RELTOL, PROPAGATOR_ABSTOL : tolerancias del integrador orbital (Vern9)
 #   FOV_PREFILTER_MARGIN        : margen del cono de prefiltro de la cámara sobre la esquina del sensor
+#   EARTH_ATMOSPHERE_ALTITUDE_KM : altura de la atmósfera que tapa la línea de visión (km)
+#   EARTH_COVERAGE_GRID_SIZE    : rayos por lado de la malla que mide la Tierra en la imagen
 #
 # Criterio: aquí van los valores que cambian el modelo o los resultados y que se
 # podrían querer ajustar. Las tolerancias que solo protegen un cálculo (evitar
@@ -51,7 +53,7 @@ export OPTICS_BODY, OPTICS_TOP, OPTICS_PANEL
 export SPHERE_MESH_DIVISIONS, CYLINDER_MESH_DIVISIONS, CONE_MESH_DIVISIONS, FRAGMENT_NUM_POINTS_RANGE
 export RANDOM_LEO_ALTITUDE_RANGE_KM, CW_MAX_ECC, CW_MAX_RATIO, TLE_MAX_DAYS
 export PROPAGATOR_RELTOL, PROPAGATOR_ABSTOL
-export FOV_PREFILTER_MARGIN
+export FOV_PREFILTER_MARGIN, EARTH_ATMOSPHERE_ALTITUDE_KM, EARTH_COVERAGE_GRID_SIZE
 
 # -----------------------------------------------------------------------------
 # Actitud
@@ -187,5 +189,18 @@ const PROPAGATOR_ABSTOL = 1e-11
 # la esquina del sensor más alejada por este factor; el margen cubre los puntos que la
 # distorsión de la lente lleva al sensor desde fuera (distorsión de barril, k1 < 0)
 const FOV_PREFILTER_MARGIN = 1.25
+
+# Malla de n × n rayos con la que se mide qué fracción de la imagen ocupa la Tierra (y la Tierra
+# de día) en frame_status.csv; cada rayo representa 1/n² de la imagen
+const EARTH_COVERAGE_GRID_SIZE = 64
+
+# -----------------------------------------------------------------------------
+# Visibilidad
+# -----------------------------------------------------------------------------
+
+# La Tierra tapa la línea de visión como una esfera de radio R_EARTH + esta altura: cerca del
+# limbo, la atmósfera absorbe y desvía la luz. 100 km es la línea de Kármán, el límite de la
+# atmósfera por convenio (la atmósfera no termina ahí, pero por encima es despreciable)
+const EARTH_ATMOSPHERE_ALTITUDE_KM = 100.0
 
 end # module Parameters
