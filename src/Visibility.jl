@@ -6,7 +6,7 @@
 # que la cámara pueda observar (la usa CameraSim).
 #
 # Funciones:
-#   eclipseEarthECI         : ¿está el objetivo en la sombra de la Tierra? (umbra / penumbra)
+#   shadow_function         : fracción ν del disco solar que ve un punto (1 iluminado, 0 umbra)
 #   losECI                  : ¿hay línea de visión entre dos puntos, sin que la Tierra la corte?
 #   sun_boresight_angle_deg : ángulo entre el eje óptico de la cámara y el Sol (exclusión solar)
 #   earth_occulting_radius  : radio de la esfera que tapa la línea de visión (Tierra + atmósfera)
@@ -24,7 +24,7 @@
 
 module Visibility
 
-export eclipseEarthECI, losECI, sun_boresight_angle_deg
+export shadow_function, losECI, sun_boresight_angle_deg
 export earth_occulting_radius, earth_angular_radius_deg, earth_ray_hit, is_earth_occulted
 
 using ..Constants: R_EARTH, R_SUN, D_SUN
@@ -41,50 +41,63 @@ const TOL = 1e-9
 const MAX_PROJECT_DEPTH_KM = 100.0
 
 """
-    eclipseEarthECI(r_sc, u_sun) -> (Bool, String)
+    shadow_function(r_obj, u_sun) -> Float64
 
-Indica si un punto está en la sombra de la Tierra con el modelo de conos de umbra y
-penumbra. En el eje de la sombra (opuesto al Sol), a una distancia x detrás de la
-Tierra, los radios de los conos son
+Función de sombra ν de la Tierra: fracción del disco solar que ve un punto, de 1
+(iluminado) a 0 (umbra), con valores intermedios en penumbra. Se modela como el solape de
+dos discos vistos desde el punto (Montenbruck y Gill, 2000, sec. 3.4.2, ecs. 3.85–3.94):
 
-    r_u(x) = R (1 - x / L_u),   L_u = D R / (R☉ - R)
-    r_p(x) = R (1 + x / L_p),   L_p = D R / (R☉ + R)
+    a = arcsin(R☉ / |r☉ - r|)                     radio aparente del Sol
+    b = arcsin(R⊕ / |r|)                           radio aparente de la Tierra
+    c = arccos(-r·(r☉ - r) / (|r| |r☉ - r|))       separación de sus centros
 
-con L_u y L_p las distancias del centro de la Tierra al vértice de cada cono. El
-punto está en umbra si su distancia al eje ρ ≤ r_u(x), y en penumbra si ρ ≤ r_p(x).
+- c ≥ a + b: no hay ocultación, ν = 1.
+- c ≤ b - a: ocultación total (umbra), ν = 0.
+- c ≤ a - b: anular (la Tierra entera dentro del disco solar, solo a más de ~1,4·10⁶ km),
+  ν = 1 - b²/a².
+- Si no, parcial: con x = (c² + a² - b²)/(2c) e y = √(a² - x²), el área tapada es
+  A = a² arccos(x/a) + b² arccos((c - x)/b) - c y, y ν = 1 - A/(π a²).
 
-Por qué existe: un objetivo en sombra no refleja luz del Sol, así que no aparece en
-la imagen (la fotometría le da magnitud infinita, también en penumbra).
+Se usa la Tierra sin atmósfera (radio R⊕), como Montenbruck y Gill, y el Sol en
+r☉ = D☉ û☉.
+
+Por qué existe: el flujo que refleja el objetivo es proporcional a la luz solar que le
+llega, así que la fotometría lo multiplica por ν (la magnitud aumenta en -2,5 log₁₀ ν).
 
 # Argumentos
-- `r_sc::SVector{3,Float64}`: posición del punto en ECI (km).
+- `r_obj::SVector{3,Float64}`: posición del punto en ECI (km).
 - `u_sun::SVector{3,Float64}`: dirección unitaria Tierra -> Sol en ECI.
 
 # Devuelve
-- `(en_sombra, region)`: `region` es `"umbra"`, `"penumbra"` o `"lit"`.
+- `Float64` ν ∈ [0, 1].
 
 # Excepciones
 - Ninguna.
 
 # Ejemplo
 ```julia
-eclipseEarthECI(SVector(-7000.0, 0, 0), SVector(1.0, 0, 0))   # (true, "umbra")
+shadow_function(SVector(-7000.0, 0, 0), SVector(1.0, 0, 0))   # 0.0: en el eje de la sombra (umbra)
 ```
 """
-function eclipseEarthECI(r_sc::SVector{3,Float64}, u_sun::SVector{3,Float64})
-    u_axis = -u_sun                                  # eje de la sombra, alejándose del Sol
-    x = dot(r_sc, u_axis)                            # distancia detrás de la Tierra a lo largo del eje
-    rho = norm(r_sc - x * u_axis)                    # distancia al eje
-    x <= 0.0 && return false, "lit"                  # en el lado del Sol
+function shadow_function(r_obj::SVector{3,Float64}, u_sun::SVector{3,Float64})
+    r_sun_rel = D_SUN * u_sun - r_obj                  # del punto al Sol
+    d_sun, d_earth = norm(r_sun_rel), norm(r_obj)
+    a = asin(R_SUN / d_sun)
+    b = asin(min(R_EARTH / d_earth, 1.0))
+    c = acos(clamp(-dot(r_obj, r_sun_rel) / (d_earth * d_sun), -1.0, 1.0))
 
-    L_umbra = D_SUN * R_EARTH / (R_SUN - R_EARTH)                # vértice del cono de umbra
-    L_penum = D_SUN * R_EARTH / (R_SUN + R_EARTH)                # vértice (delante de la Tierra) del de penumbra
-    r_umbra = max(R_EARTH * (1.0 - x / L_umbra), 0.0)
-    r_penum = R_EARTH * (1.0 + x / L_penum)
+    c >= a + b && return 1.0                           # sin ocultación
+    c <= b - a && return 0.0                           # umbra
+    c <= a - b && return 1.0 - (b / a)^2               # anular
+    return 1.0 - occulted_area(a, b, c) / (π * a^2)
+end
 
-    (x <= L_umbra + TOL && r_umbra > 0.0 && rho <= r_umbra + TOL) && return true, "umbra"
-    rho <= r_penum + TOL && return true, "penumbra"
-    return false, "lit"
+# Área del disco solar (radio aparente a) tapada por el de la Tierra (b) con sus centros a c,
+# para |a - b| < c < a + b (Montenbruck y Gill, 2000, ecs. 3.92 y 3.93); ángulos en rad
+function occulted_area(a::Real, b::Real, c::Real)
+    x = (c^2 + a^2 - b^2) / (2c)
+    y = sqrt(max(a^2 - x^2, 0.0))
+    return a^2 * acos(clamp(x / a, -1.0, 1.0)) + b^2 * acos(clamp((c - x) / b, -1.0, 1.0)) - c * y
 end
 
 """

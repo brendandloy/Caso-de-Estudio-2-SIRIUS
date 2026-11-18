@@ -3,9 +3,10 @@
 #
 # Módulo Photometry: magnitud aparente de cada objetivo visto desde cada observador
 # en cada instante, con el modelo de reflexión de Phong por facetas (CE2 de
-# A. Ortiz Tello). Antes comprueba con Visibility que el objetivo está iluminado
-# y en línea de visión. El deslumbramiento por el Sol es de la cámara, no del
-# objetivo: lo comprueba CameraSim con la exclusión solar.
+# A. Ortiz Tello). Antes comprueba con Visibility que el objetivo está en línea de
+# visión y qué fracción ν del disco solar ve (función de sombra): en umbra (ν = 0)
+# no se ve, y en penumbra su flujo se multiplica por ν. El deslumbramiento por el
+# Sol es de la cámara, no del objetivo: lo comprueba CameraSim con la exclusión solar.
 #
 # Funciones: compute_apparent_magnitude (API), _compute_apparent_magnitude_epoch,
 # _phong_model.
@@ -21,7 +22,7 @@ export compute_apparent_magnitude
 using ..Types
 using ..Constants
 using ..Transformations
-using ..Visibility      # eclipse y línea de visión
+using ..Visibility      # función de sombra y línea de visión
 using ..Geometry: DebrisModel
 
 using LinearAlgebra
@@ -48,7 +49,8 @@ se guarda en las medidas LOS.
 - `DCM_t::Vector{SMatrix{3,3,Float64,9}}`: DCM cuerpo -> ECI del objetivo en cada instante.
 
 # Devuelve
-- `(t, Vmag, is_eclipsed, is_occluded, is_visible)`: vectores por instante;
+- `(t, Vmag, shadow_fraction, is_eclipsed, is_occluded, is_visible)`: vectores por
+  instante; `shadow_fraction` es ν (1 iluminado, 0 umbra), `is_eclipsed` indica umbra y
   `Vmag = Inf` si el objetivo no se ve.
 
 # Excepciones
@@ -60,6 +62,7 @@ function compute_apparent_magnitude(obs_traj::TrajectoryData, obj_traj::Trajecto
     N = length(obs_traj.t)
 
     Vmag       = Vector{Float64}(undef, N)
+    shadow_fraction = Vector{Float64}(undef, N)
     is_eclipsed = falses(N)
     is_occluded   = falses(N)
     is_visible    = falses(N)
@@ -75,6 +78,7 @@ function compute_apparent_magnitude(obs_traj::TrajectoryData, obj_traj::Trajecto
                                                 u_n_eci, debris, phot_cfg)
 
         Vmag[k]       = res.Vmag
+        shadow_fraction[k] = res.shadow_fraction
         is_eclipsed[k] = res.is_eclipsed
         is_occluded[k]   = res.is_occluded
         is_visible[k]    = res.is_visible
@@ -83,6 +87,7 @@ function compute_apparent_magnitude(obs_traj::TrajectoryData, obj_traj::Trajecto
     return (
         t = obs_traj.t,
         Vmag = Vmag,
+        shadow_fraction = shadow_fraction,
         is_eclipsed = is_eclipsed,
         is_occluded = is_occluded,
         is_visible = is_visible
@@ -96,8 +101,10 @@ end
 """
     _compute_apparent_magnitude_epoch(r_obs, r_obj, u_sun, u_n_eci, debris, phot_cfg) -> NamedTuple
 
-Visibilidad y magnitud en un instante: si el objetivo está en sombra o tapado por la
-Tierra, `Vmag = Inf`; si no, la del modelo de Phong.
+Visibilidad y magnitud en un instante: si el objetivo está en umbra (ν = 0) o tapado por
+la Tierra, `Vmag = Inf`; si no, la del modelo de Phong con el flujo multiplicado por la
+función de sombra ν, es decir, `V = V_Phong - 2,5 log₁₀ ν` (Montenbruck y Gill, 2000,
+sec. 3.4.2).
 
 Por qué existe: separa las condiciones de visibilidad (Visibility) del modelo de
 reflexión (`_phong_model`).
@@ -108,7 +115,7 @@ reflexión (`_phong_model`).
 - `debris::DebrisModel`, `phot_cfg`: como en `compute_apparent_magnitude`.
 
 # Devuelve
-- `(Vmag, is_eclipsed, is_occluded, is_visible)`.
+- `(Vmag, shadow_fraction, is_eclipsed, is_occluded, is_visible)`.
 
 # Excepciones
 - Ninguna.
@@ -116,12 +123,14 @@ reflexión (`_phong_model`).
 @inline function _compute_apparent_magnitude_epoch(r_obs::SVector{3,Float64}, r_obj::SVector{3,Float64},
     u_sun::SVector{3,Float64}, u_n_eci, debris::DebrisModel, phot_cfg)
 
-    is_eclipsed, _ = eclipseEarthECI(r_obj, u_sun)
+    ν = shadow_function(r_obj, u_sun)
+    is_eclipsed = ν <= 0.0                            # umbra
     has_los = losECI(r_obs, r_obj)
     is_occluded = !has_los
 
     if is_eclipsed || is_occluded
         return (Vmag = Inf, 
+                shadow_fraction = ν,
                 is_eclipsed = is_eclipsed, 
                 is_occluded = is_occluded,
                 is_visible = false)
@@ -132,8 +141,10 @@ reflexión (`_phong_model`).
     u_obs = v_obs / d
 
     Vmag, has_valid_facets = _phong_model(d, u_n_eci, u_sun, u_obs, debris, phot_cfg)
+    Vmag -= 2.5 * log10(ν)                            # penumbra: flujo × ν (ν = 1 iluminado: sin cambio)
 
     return (Vmag = Vmag, 
+            shadow_fraction = ν,
             is_eclipsed = false, 
             is_occluded = false,
             is_visible = has_valid_facets)

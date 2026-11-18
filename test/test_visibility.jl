@@ -1,8 +1,9 @@
 # =============================================================================
 # test_visibility.jl
 #
-# Pruebas del módulo Visibility con casos geométricos calculados a mano: eclipse
-# (umbra, penumbra e iluminado frente a los radios analíticos de los conos), línea
+# Pruebas del módulo Visibility con casos geométricos calculados a mano: función de
+# sombra (umbra, penumbra e iluminado frente a los radios analíticos de los conos, y
+# el limbo de la Tierra en el centro del Sol, ν ≈ 1/2), línea
 # de visión (Tierra en medio, mismo lado, atmósfera, extremos bajo la superficie),
 # ángulo entre el Sol y el eje óptico de la cámara (exclusión solar) y la Tierra vista
 # desde el observador (radio con la atmósfera, semiángulo del disco, choque de un rayo).
@@ -33,25 +34,31 @@ const SUN_X = SVector(1.0, 0.0, 0.0)                 # dirección del Sol: +x EC
 
 @testset "Visibility" begin
 
-    @testset "Eclipse (conos de umbra y penumbra)" begin
+    @testset "Función de sombra (conos de umbra y penumbra)" begin
         # Radios analíticos de los conos a x = 7000 km detrás de la Tierra
         L_u = D_SUN * R_EARTH / (R_SUN - R_EARTH)
         L_p = D_SUN * R_EARTH / (R_SUN + R_EARTH)
         r_u = R_EARTH * (1 - 7000 / L_u)                   # ≈ 6345.9 km
         r_p = R_EARTH * (1 + 7000 / L_p)                   # ≈ 6411.0 km
 
-        # En el eje de la sombra: umbra; en el lado del Sol: iluminado
-        @test eclipseEarthECI(SVector(-7000.0, 0, 0), SUN_X) == (true, "umbra")
-        @test eclipseEarthECI(SVector(7000.0, 0, 0), SUN_X) == (false, "lit")
+        # En el eje de la sombra: umbra (ν = 0); en el lado del Sol: iluminado (ν = 1)
+        @test shadow_function(SVector(-7000.0, 0, 0), SUN_X) == 0.0
+        @test shadow_function(SVector(7000.0, 0, 0), SUN_X) == 1.0
 
-        # A los lados del eje: justo dentro y fuera de cada cono
-        @test eclipseEarthECI(SVector(-7000.0, r_u - 1, 0), SUN_X) == (true, "umbra")
-        @test eclipseEarthECI(SVector(-7000.0, r_u + 1, 0), SUN_X) == (true, "penumbra")
-        @test eclipseEarthECI(SVector(-7000.0, r_p - 1, 0), SUN_X) == (true, "penumbra")
-        @test eclipseEarthECI(SVector(-7000.0, r_p + 1, 0), SUN_X) == (false, "lit")
+        # A los lados del eje, justo dentro y fuera de cada cono: el borde de la umbra es la
+        # tangencia interior de los discos (c = b - a) y el de la penumbra la exterior (c = a + b)
+        @test shadow_function(SVector(-7000.0, r_u - 1, 0), SUN_X) == 0.0
+        @test 0.0 < shadow_function(SVector(-7000.0, r_u + 1, 0), SUN_X) < 1.0
+        @test 0.0 < shadow_function(SVector(-7000.0, r_p - 1, 0), SUN_X) < 1.0
+        @test shadow_function(SVector(-7000.0, r_p + 1, 0), SUN_X) == 1.0
 
         # Por encima del polo, perpendicular al Sol (x = 0): iluminado
-        @test eclipseEarthECI(SVector(0.0, 0, 7000), SUN_X) == (false, "lit")
+        @test shadow_function(SVector(0.0, 0, 7000), SUN_X) == 1.0
+
+        # Limbo de la Tierra sobre el centro del Sol (c = b): se tapa casi la mitad del disco
+        # solar, ν ≈ 1/2 (el limbo es casi recto a la escala del Sol, a/b ≈ 0,004)
+        b = asin(R_EARTH / 7000)
+        @test shadow_function(7000 * SVector(-cos(b), sin(b), 0), SUN_X) ≈ 0.5 atol = 0.01
     end
 
     @testset "Línea de visión" begin

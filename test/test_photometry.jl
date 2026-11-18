@@ -4,7 +4,8 @@
 # Pruebas del módulo Photometry con una placa de una faceta y casos calculados a
 # mano: flujo de Phong con la placa de frente al Sol y al observador, ley 1/d²
 # (duplicar la distancia suma 5·log10(2) = 1,505 mag), giro de la normal con la
-# DCM, faceta de espaldas y objetivo en la sombra de la Tierra.
+# DCM, faceta de espaldas, objetivo en la umbra de la Tierra y en penumbra (la
+# magnitud aumenta en -2,5 log₁₀ ν).
 #
 # Uso (desde la raíz del repositorio):
 #   julia --project=. test/test_photometry.jl
@@ -31,7 +32,7 @@ isdefined(Main, :Geometry)        || include(joinpath(ROOT, "src", "Geometry", "
 isdefined(Main, :Visibility)      || include(joinpath(ROOT, "src", "Visibility.jl"))
 isdefined(Main, :Photometry)      || include(joinpath(ROOT, "src", "Photometry.jl"))
 
-using .Types, .Geometry, .Photometry
+using .Types, .Constants, .Geometry, .Visibility, .Photometry
 
 const SUN_X = SVector(1.0, 0.0, 0.0)                 # dirección del Sol: +x ECI
 const PHOT_CFG = (phi_sun = 455.0,)
@@ -95,5 +96,13 @@ end
         # Objetivo detrás de la Tierra (en umbra): no se ve
         res = magnitude(plate((1.0, 0, 0)), 1000.0; r_obj = SVector(-42164.0, 0, 0))
         @test res.is_eclipsed[1] && isinf(res.Vmag[1])
+
+        # En penumbra, en el borde geométrico de la sombra (y = R⊕): se ve con el flujo × ν,
+        # es decir, -2,5 log₁₀ ν más débil que iluminado con la misma geometría
+        r_pen = SVector(-42164.0, R_EARTH, 0)
+        ν = shadow_function(r_pen, SUN_X)
+        res = magnitude(plate((1.0, 0, 0)), 1000.0; r_obj = r_pen)
+        @test 0 < ν < 1 && !res.is_eclipsed[1] && res.shadow_fraction[1] == ν
+        @test res.Vmag[1] ≈ magnitude(plate((1.0, 0, 0)), 1000.0).Vmag[1] - 2.5 * log10(ν)
     end
 end

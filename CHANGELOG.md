@@ -4,6 +4,17 @@ Cambios relevantes de SIRIUS en el Caso de Estudio 2. Formato basado en [Keep a 
 
 ## [Sin publicar]
 
+### 2026-11-18 (penumbra con la función de sombra)
+#### Añadido
+- `Visibility.shadow_function`: función de sombra ν de Montenbruck y Gill (2000, sec. 3.4.2), fracción del disco solar que ve el objetivo.
+- `compute_apparent_magnitude` devuelve también `shadow_fraction` (ν por instante).
+
+#### Cambiado
+- En penumbra el objetivo ya no desaparece: su flujo se multiplica por ν y la magnitud aumenta en −2,5 log₁₀ ν. `is_eclipsed` indica ahora solo umbra (ν = 0).
+
+#### Eliminado
+- `Visibility.eclipseEarthECI` (conos de umbra y penumbra del CE2 de Ortiz), sustituida por `shadow_function`.
+
 ### 2026-11-18 (la Tierra delante de la cámara)
 #### Añadido
 - Las estrellas que tapa la Tierra ya no se pintan (`CameraSim.hide_stars_behind_earth`). El disco de la Tierra queda negro, también de día.
